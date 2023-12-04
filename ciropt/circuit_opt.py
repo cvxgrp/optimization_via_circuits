@@ -58,21 +58,15 @@ class CircuitOpt(object):
         self.list_of_points.append(x)
         return x
     
-
-    def set_energy(self, E_1, E_2):
-        assert isinstance(E_1, Expression) and isinstance(E_2, Expression)
-        assert check_degree_expression(E_1, 2) and check_degree_expression(E_2, 2)
-        self.E_1 = E_1
-        self.E_2 = E_2
-
-
-    def set_delta( self, delta_1 ):
+    
+    def set_performance_metric( self,  perf_metric):
         """
+        perf_metric = E_2 - (E_1 - Delta_1)
         Delta_1 = b * (tilde_f_1 - f_star) + d * (R * \|i_R\|^2_2)
         """
-        assert isinstance(delta_1, Expression)
-        self.Delta_1 = delta_1
-        assert check_degree_expression(self.Delta_1, 2)
+        assert isinstance(perf_metric, Expression)
+        self.perf_metric = perf_metric
+        assert check_degree_expression(self.perf_metric, 2)
 
 
     def _expression_to_matrix(self, expression, dim_G, dim_F, sp_v=None):
@@ -117,8 +111,7 @@ class CircuitOpt(object):
             total_I_size += counter
             assert len(function.list_of_class_constraints) == size_I_function * (size_I_function - 1)
 
-        descent = self.E_2 - self.E_1 + self.Delta_1
-        Fweights_d, Gweights_d = self._expression_to_matrix(descent, dim_G, dim_F) 
+        Fweights_d, Gweights_d = self._expression_to_matrix(self.perf_metric, dim_G, dim_F) 
         sp_exp["FG_d"] = {"F" : Fweights_d, "G" : Gweights_d}
         assert sum_ij_La.shape == Fweights_d.shape and sum_ij_AC.shape == Gweights_d.shape
         return sp_exp, total_I_size, sum_ij_La, sum_ij_AC
@@ -579,6 +572,7 @@ class CircuitOpt(object):
         
         # bounds
         bounds_vars = cp.Variable((len(bounds_names)))
+        bnames2idx = {bname:idx for idx, bname in enumerate(bounds_names)}
         # SDP variables
         var_x = cp.Variable((x_size, 1))
         # ub_x = 10000 * np.ones((x_size, 1))
@@ -594,7 +588,7 @@ class CircuitOpt(object):
         constraints += [ # bounds_vars <= 10000 * np.ones((len(bounds_names))),
                         #  var_x[name2idx["b"]] <= 0,\
                          var_x[name2idx["b"]] >= 0.05, \
-                         var_x[name2idx["h"]] >= 0.1, \
+                         var_x[name2idx["h"]] >= 0.01, \
                          var_x[name2idx["d"]] >= 0]
         # constraints to encode X \succeq xx^T
         constraints += [W[ : x_size, : x_size] == var_X, \
@@ -685,10 +679,11 @@ class CircuitOpt(object):
                 constraints += [cp.abs(var_name[:, 0]) <= bounds_vars[b_idx] * np.ones(var_name.size)]
             else:
                 constraints += [cp.abs(var_x[name2idx[name], 0]) <= bounds_vars[b_idx]]
+        constraints += [cp.square(bounds_vars[bnames2idx["P"]]) <= cp.trace(I_P @ var_X @ I_P.T), \
+                        bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.99)]
+        assert (I_P @ var_X @ I_P.T).shape[0] == dim_G * (dim_G + 1) // 2
 
-
-        obj = -cp.sum(bounds_vars)
-        # obj = - var_x[name2idx["b"], 0] - var_x[name2idx["d"], 0]
+        obj = - cp.sum(bounds_vars)
         prob = cp.Problem(cp.Minimize(obj), constraints)
         # prob.solve(solver='SCS', verbose=verbose)
         # prob.solve(solver='CVXOPT', verbose=verbose)
@@ -701,6 +696,7 @@ class CircuitOpt(object):
         self.v_names = v_names
         self.var_x = var_x
         self.bounds_vars = {name:bounds_vars.value[b_idx] for b_idx, name in enumerate(bounds_names) }
+        # self.bounds_vars["P"] = np.sqrt(self.bounds_vars["Z"])
         return self.bounds_vars, prob, sp_exp
    
 
@@ -761,7 +757,7 @@ class CircuitOpt(object):
             return self.solve_gp(**kwargs)
         elif solver == "gp_canonical_X":
             return self.solve_gp_canonical_X(**kwargs)
-        elif solver == "cvx_sdp":
+        elif solver == "cvx_sdp_relax":
             return self.solve_cvx_canonical_sdp_relax(**kwargs)
         elif solver == "ca":
             return self.solve_ca(**kwargs)

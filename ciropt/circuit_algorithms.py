@@ -1,29 +1,45 @@
 import numpy as np
 
+import PEPit
+import PEPit.functions as pep_func
+from PEPit.primitive_steps import proximal_step as pep_proximal_step
+
+import ciropt.function as co_func
 from ciropt.circuit_opt import CircuitOpt
+
+
 from ciropt.function import SmoothStronglyConvexFunction, StronglyConvexFunction, \
                             SmoothConvexFunction, ConvexFunction
 
+ 
 
 
-def define_function(problem, mu, L_smooth):
+def define_function(problem, mu, L_smooth, package):
     if mu != 0 and L_smooth < np.inf:
-        func = problem.declare_function( SmoothStronglyConvexFunction, L=L_smooth, mu=mu) 
+        func = problem.declare_function( package.SmoothStronglyConvexFunction, L=L_smooth, mu=mu) 
     elif mu != 0:
-        func = problem.declare_function( StronglyConvexFunction, mu=mu) 
+        func = problem.declare_function( package.StronglyConvexFunction, mu=mu) 
     elif L_smooth < np.inf:
-        func = problem.declare_function( SmoothConvexFunction, L=L_smooth) 
+        func = problem.declare_function( package.SmoothConvexFunction, L=L_smooth) 
     else:
-        func = problem.declare_function( ConvexFunction) 
+        func = problem.declare_function( package.ConvexFunction) 
     return func
 
 
-def gradient_flow_circuit(mu, L_smooth, Capacitance):
-    problem = CircuitOpt()
-    func = define_function(problem, mu, L_smooth)
-
-    h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
-    x_star, y_star, f_star = func.stationary_point()
+def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None): 
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
+    func = define_function(problem, mu, L_smooth, package )
+    x_star = func.stationary_point()
+    f_star = func.value(x_star)
 
     x_1 = problem.set_initial_point()
     y_1, f_1 = func.oracle(x_1)
@@ -37,54 +53,74 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance):
     E_1 = (Capacitance/2) * (x_1 - x_star)**2
     E_2 = (Capacitance/2) * (x_2 - x_star)**2
     Delta_1 = b * (f_1 - f_star)
-    problem.set_energy(E_1 = E_1, E_2 = E_2)
-    problem.set_delta( Delta_1 )
-    problem.obj = b
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
 
-def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance):
-    problem = CircuitOpt()
-    func = define_function(problem, mu, L_smooth) 
-    h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, params=None): 
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
 
-    x_star, y_star, f_star = func.stationary_point()
+    func = define_function(problem, mu, L_smooth, package )
+    x_star = func.stationary_point()
+    y_star, f_star = func.oracle(x_star)
 
-    x_1 = problem.set_initial_point()
+    # x_1 = problem.set_initial_point()
+    # i_L_1 = problem.set_initial_point()
+    # y_1, f_1 = func.oracle(x_1)
+    # v_C_1 = x_1 + R * y_1  - R * i_L_1
+    v_C_1 = problem.set_initial_point()
     i_L_1 = problem.set_initial_point()
-    y_1, f_1 = func.oracle(x_1)
-    v_C_1 = x_1 + R * y_1  - R * i_L_1
+    x_1, y_1, f_1 = proximal_step((R * i_L_1 + v_C_1), func, R)
 
     i_L_1p5 = i_L_1 + (alpha * h / Inductance) * (v_C_1 - x_1) 
     v_C_1p5 = v_C_1 - (alpha * h / Capacitance) * y_1 
-    x_1p5, y_1p5, f_1p5 = func.proximal_step((R * i_L_1p5 + v_C_1p5), R)
+    x_1p5, y_1p5, f_1p5 = proximal_step((R * i_L_1p5 + v_C_1p5), func, R)
 
     i_L_2 = i_L_1 + (beta * h / Inductance) * (v_C_1 - x_1) + \
                     ((1 - beta) * h / Inductance) * (v_C_1p5 - x_1p5)
     v_C_2 = v_C_1 - (beta * h / Capacitance) * y_1 - ((1 - beta) * h / Capacitance) * y_1p5  
-    x_2, y_2, f_2 = func.proximal_step((R * i_L_2 + v_C_2), R)
+    x_2, y_2, f_2 = proximal_step((R * i_L_2 + v_C_2), func, R)
 
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2 + (Inductance/2) * (i_L_1 - y_star) ** 2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2 + (Inductance/2) * (i_L_2 - y_star) ** 2
     Delta_1 = d * R * (y_1 - i_L_1)**2 + b * (f_1 - f_star)
     # Delta_1 = b * (f_1 - f_star) 
-    problem.set_energy(E_1 = E_1, E_2 = E_2)
-    problem.set_delta( Delta_1 )
-    problem.obj = b + d
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
 
-def admm_consensus(n_func, mu, L_smooth, R, Inductance):
-    problem = CircuitOpt()
+def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"] #, params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b #, problem.d
 
     fs = [0] * n_func
     for i in range(n_func):
-        fs[i] = define_function(problem, mu, L_smooth)
+        fs[i] = define_function(problem, mu, L_smooth, package)
         if i == 0: f = fs[i]
         else: f += fs[i]
-
-    h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
-    x_star, y_star, f_star = f.stationary_point()
+    x_star = f.stationary_point()
+    y_star, f_star = f.oracle(x_star)
     gs_star = [0] * n_func
     for i in range(n_func):
         gi, fi = fs[i].oracle(x_star)
@@ -100,7 +136,7 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance):
 
     triplets_1 = [0] * n_func
     for i in range(n_func):
-        xi, gi, fi = fs[i].proximal_step((R * i_Ls_1[i]), R)
+        xi, gi, fi = proximal_step((R * i_Ls_1[i]), fs[i], R)
         if i == 0: e_1 = xi
         else: e_1 = e_1 + xi
         triplets_1[i] = (xi, gi, fi)
@@ -112,7 +148,7 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance):
         i_Ls_1p5[i] = i_Ls_1[i] + (alpha * h / Inductance) * (e_1 - triplets_1[i][0]) 
     triplets_1p5 = [0] * n_func
     for i in range(n_func):
-        xi, gi, fi = fs[i].proximal_step((R * i_Ls_1p5[i] + e_1), R)
+        xi, gi, fi = proximal_step((R * i_Ls_1p5[i] + e_1), fs[i], R)
         if i == 0: e_1p5 = xi
         else: e_1p5 = e_1p5 + xi
         triplets_1p5[i] = (xi, gi, fi)
@@ -124,7 +160,7 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance):
                               + ((1 - beta) * h / Inductance) * (e_1p5 - triplets_1p5[i][0])
     triplets_2 = [0] * n_func
     for i in range(n_func):
-        xi, gi, fi = fs[i].proximal_step((R * i_Ls_1p5[i] + e_1p5), R)
+        xi, gi, fi = proximal_step((R * i_Ls_1p5[i] + e_1p5), fs[i], R)
         if i == 0: e_2 = xi
         else: e_2 = e_2 + xi
         triplets_2[i] = (xi, gi, fi)
@@ -139,8 +175,5 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance):
     #     else: Delta_1 = Delta_1 + d * R * (triplets_1[i][1] - i_Ls_1[i])**2 
     # Delta_1 += b * (f_1 - f_star)
     Delta_1 = b * (f_1 - f_star)
-    problem.set_energy(E_1 = E_1, E_2 = E_2)
-    problem.set_delta( Delta_1 )
-    problem.obj = b
-
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem

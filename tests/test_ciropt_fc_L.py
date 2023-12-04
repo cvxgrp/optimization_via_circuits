@@ -5,8 +5,8 @@ import sympy as sp
 
 
 def eval_ca_function(vars, eval_vars, func):
-    g_func = ca.Function('g_func', vars, [func])
-    return g_func(*eval_vars)
+    y_func = ca.Function('y_func', vars, [func])
+    return y_func(*eval_vars)
 
 
 def main():
@@ -17,7 +17,7 @@ def main():
 
     # Ciropt formulation
     problem = co.gradient_flow_circuit(0, L_smooth, Capacitance)
-
+    problem.obj = problem.b
     res, sol, sp_exp = problem.solve(solver=solver, debug=True, verbose=False)[:3]
     ca_vars = problem.vars
     print(res)
@@ -26,7 +26,7 @@ def main():
 
     # Manual problem formulation
     size_I = 4          # I = { star, 1, 1.5, 2 }
-    dim_G = 5           # { x_star, x_P_1, g_1, g_1p5, g_2 }
+    dim_G = 5           # { x_star, x_1, y_1, y_1p5, y_2 }
     dim_F = 4           # { f_star, f_1, f_1p5, f_2 }
     opti = ca.Opti()
 
@@ -40,11 +40,11 @@ def main():
     P = ca.tril(P_full)
     lamb0 = opti.variable(size_I, size_I)
 
-    g_star = np.zeros(dim_G).reshape(-1, 1)
-    g_1 = co.one_hot(dim_G, 2)
-    g_1p5 = co.one_hot(dim_G, 3) 
-    g_2 = co.one_hot(dim_G, 4) 
-    Gs = [g_star, g_1, g_1p5, g_2]
+    y_star = np.zeros(dim_G).reshape(-1, 1)
+    y_1 = co.one_hot(dim_G, 2)
+    y_1p5 = co.one_hot(dim_G, 3) 
+    y_2 = co.one_hot(dim_G, 4) 
+    Gs = [y_star, y_1, y_1p5, y_2]
 
     f_star = co.one_hot(dim_F, 0) # np.zeros((dim_F, 1))
     f_1   = co.one_hot(dim_F, 1) 
@@ -52,16 +52,16 @@ def main():
     f_2   = co.one_hot(dim_F, 3)
     F = [f_star, f_1, f_1p5, f_2]
 
-    x_P_star = co.one_hot(dim_G, 0)
-    x_P_1    = co.one_hot(dim_G, 1)
-    x_P_1p5 = x_P_1 - (alpha_h / Capacitance) * g_1
-    x_P_2   = x_P_1 - (beta_h / Capacitance) * g_1 - ((h - beta_h) / Capacitance) * g_1p5 
-    Xs = [x_P_star, x_P_1, x_P_1p5, x_P_2]
+    x_star = co.one_hot(dim_G, 0)
+    x_1    = co.one_hot(dim_G, 1)
+    x_1p5 = x_1 - (alpha_h / Capacitance) * y_1
+    x_2   = x_1 - (beta_h / Capacitance) * y_1 - ((h - beta_h) / Capacitance) * y_1p5 
+    Xs = [x_star, x_1, x_1p5, x_2]
 
     sp_vars = {name : sp.symbols(name) for name in ca_vars.keys()}
-    sp_x_P_1p5 = x_P_1 - (sp_vars["alpha_h"] / Capacitance) * g_1
-    sp_x_P_2   = x_P_1 - (sp_vars["beta_h"] / Capacitance) * g_1 - ((sp_vars["h"] - sp_vars["beta_h"]) / Capacitance) * g_1p5 
-    sp_Xs = [x_P_star, x_P_1, sp_x_P_1p5, sp_x_P_2]
+    sp_x_1p5 = x_1 - (sp_vars["alpha_h"] / Capacitance) * y_1
+    sp_x_2   = x_1 - (sp_vars["beta_h"] / Capacitance) * y_1 - ((sp_vars["h"] - sp_vars["beta_h"]) / Capacitance) * y_1p5 
+    sp_Xs = [x_star, x_1, sp_x_1p5, sp_x_2]
 
     star_idx = 4
     A = lambda i,j: co.symm_prod(Gs[j], Xs[i] - Xs[j])
@@ -134,13 +134,13 @@ def main():
     eval_vars = [b_init, h_init, alpha_init, beta_init, alpha_h_init, beta_h_init, P_full_init, lamb_init]
 
     for name in ['h', 'b', 'alpha', 'beta', 'P_full', 'lamb0']:
-        ca_g_eval = eval_ca_function(vars, eval_vars, locals()[name])
-        assert np.allclose(ca_g_eval, co_vars[name]), print(name)
+        ca_y_eval = eval_ca_function(vars, eval_vars, locals()[name])
+        assert np.allclose(ca_y_eval, co_vars[name]), print(name)
 
     for name in ['sum_ij_AC', 'sum_ij_La', 'Fweights_d', 'Gweights_d']:
-        ca_g_eval = eval_ca_function(vars, eval_vars, locals()[name])
-        assert np.allclose(ca_g_eval, problem.ca_expressions[name]) or \
-            np.allclose(np.array(ca_g_eval.full()).flatten(), problem.ca_expressions[name]), print(name)
+        ca_y_eval = eval_ca_function(vars, eval_vars, locals()[name])
+        assert np.allclose(ca_y_eval, problem.ca_expressions[name]) or \
+            np.allclose(np.array(ca_y_eval.full()).flatten(), problem.ca_expressions[name]), print(name)
 
     val_ca_P = eval_ca_function(vars, eval_vars, locals()['P_full'])
     sum1 = np.array((eval_ca_function(vars, eval_vars, locals()['sum_ij_AC']) \

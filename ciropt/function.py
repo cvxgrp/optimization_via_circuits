@@ -167,24 +167,22 @@ class Function(object):
     def __call__(self, point):
         return self.value(point=point)
 
-    def stationary_point(self, return_gradient_and_function_value=True):
+    def stationary_point(self):
         point = Point(is_leaf=True, decomposition_dict=None)
         # equivalent to having g=0
         g = Point(is_leaf=False, decomposition_dict=dict())
         f = Expression(is_leaf=True, decomposition_dict=None)
         self.add_point((point, g, f))
-        if return_gradient_and_function_value:
-            return point, g, f
-        else:
-            return point
+        return point
 
-    def proximal_step(self, x0, gamma):
-        # (I + gamma * \partial f)x = x0
-        gx = Point()
-        fx = Expression()
-        x = x0 - gamma * gx
-        self.add_point((x, gx, fx))
-        return x, gx, fx
+
+def proximal_step(x0, func, gamma):
+    # (I + gamma * \partial f)x = x0
+    gx = Point()
+    fx = Expression()
+    x = x0 - gamma * gx
+    func.add_point((x, gx, fx))
+    return x, gx, fx
         
 
 
