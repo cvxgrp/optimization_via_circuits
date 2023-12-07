@@ -57,6 +57,15 @@ def get_vec_var(x, var_name, vec_indices, matrix=False):
         return x[vec_indices[var_name][0] : vec_indices[var_name][1] + 1]
 
 
+def cholseky_matrix(Z, eps=1e-9):
+    Lamb, V = np.linalg.eigh(Z)
+    # print(Lamb)
+    assert np.allclose(V @ np.diag(Lamb) @ V.T, Z)
+    Z_plus = V @ np.diag(np.maximum(Lamb, eps)) @ V.T
+    P = np.linalg.cholesky(Z_plus)
+    return P
+
+
 def stack_vectors(vectors, max_len):
     stacked_matrix = np.zeros((len(vectors), vectors[0].shape[0], max_len))
     for i, vector in enumerate(vectors):

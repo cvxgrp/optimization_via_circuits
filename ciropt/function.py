@@ -110,7 +110,8 @@ class Function(object):
                 gradient_of_last_leaf_function = g
                 value_of_last_leaf_function = f
                 number_of_currently_computed_gradients_and_values = 0
-                # enforce g = \sum_i w_i * g_i and f = \sum_i w_i * f_i
+                # enforce g = \sum_i w_i * g_i 
+                #         f = \sum_i w_i * f_i
                 for function, weight in list_of_functions_which_need_nothing + list_of_functions_which_need_something:
                     if number_of_currently_computed_gradients_and_values < total_number_of_involved_leaf_functions - 1:
                         grad, val = function.oracle(point)
@@ -136,7 +137,7 @@ class Function(object):
                 f = Expression(is_leaf=False, decomposition_dict=dict())
                 for function, weight in self.decomposition_dict.items():
                     f += weight * function.value(point=point)
-            else:
+            else: 
                 f = Expression(is_leaf=True, decomposition_dict=None)
         if list_of_functions_which_need_gradient_and_function_value == list() and list_of_functions_which_need_gradient_only == list():
             g = Point(is_leaf=False, decomposition_dict=dict())
@@ -167,13 +168,16 @@ class Function(object):
     def __call__(self, point):
         return self.value(point=point)
 
-    def stationary_point(self):
+    def stationary_point(self, return_gradient_and_function_value=False):
         point = Point(is_leaf=True, decomposition_dict=None)
         # equivalent to having g=0
         g = Point(is_leaf=False, decomposition_dict=dict())
         f = Expression(is_leaf=True, decomposition_dict=None)
         self.add_point((point, g, f))
-        return point
+        if return_gradient_and_function_value:
+            return point, g, f
+        else:
+            return point
 
 
 def proximal_step(x0, func, gamma):

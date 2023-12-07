@@ -38,8 +38,7 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
         package = co_func
         h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
     func = define_function(problem, mu, L_smooth, package )
-    x_star = func.stationary_point()
-    f_star = func.value(x_star)
+    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
     x_1 = problem.set_initial_point()
     y_1, f_1 = func.oracle(x_1)
@@ -72,8 +71,7 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
         h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
 
     func = define_function(problem, mu, L_smooth, package )
-    x_star = func.stationary_point()
-    y_star, f_star = func.oracle(x_star)
+    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
     # x_1 = problem.set_initial_point()
     # i_L_1 = problem.set_initial_point()
@@ -119,8 +117,7 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         fs[i] = define_function(problem, mu, L_smooth, package)
         if i == 0: f = fs[i]
         else: f += fs[i]
-    x_star = f.stationary_point()
-    y_star, f_star = f.oracle(x_star)
+    x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
     gs_star = [0] * n_func
     for i in range(n_func):
         gi, fi = fs[i].oracle(x_star)
