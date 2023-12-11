@@ -170,7 +170,7 @@ class Function(object):
 
     def stationary_point(self, return_gradient_and_function_value=False):
         point = Point(is_leaf=True, decomposition_dict=None)
-        # equivalent to having g=0
+        # equivalent to having g = 0
         g = Point(is_leaf=False, decomposition_dict=dict())
         f = Expression(is_leaf=True, decomposition_dict=None)
         self.add_point((point, g, f))

@@ -4,6 +4,31 @@ import gurobipy as gp
 
 
 
+
+def ca_add_bounds(opti, bounds, ca_vars):
+    if bounds is not None:
+            for name in bounds.keys():
+                if "ub" in bounds[name]:
+                    opti.subject_to( ca_vars[name] <= bounds[name]["ub"] )
+                if "lb" in bounds[name]:
+                    opti.subject_to( ca_vars[name] >= bounds[name]["lb"] )
+
+
+def cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs):
+    if bounds is not None:
+        for name in bounds.keys():
+            if name in cvx_vars: this_var = cvx_vars[name]
+            elif name in name2idx: this_var = var_x[name2idx[name]]
+            elif name == "lamb": this_var = I_lambs @ var_x
+            else: continue
+            print("set bounds for %s"%name)
+            if "ub" in bounds[name]:
+                constraints += [ this_var <= bounds[name]["ub"] ]
+            if "lb" in bounds[name]:
+                constraints += [ this_var >= bounds[name]["lb"] ]
+    return constraints
+
+
 def get_PPt_element(vec_P, k1, k2):
     def get_start_idx(k):
         return k * (k+1) // 2 
@@ -55,6 +80,28 @@ def get_vec_var(x, var_name, vec_indices, matrix=False):
         return selection_matrix
     else:
         return x[vec_indices[var_name][0] : vec_indices[var_name][1] + 1]
+
+
+def reshape_lamb_2d(lamb):
+    size = int(np.sqrt(lamb.size)) + 1
+    res = np.zeros((size, size))
+    count = 0
+    for i in range(size):
+        for j in range(size):
+            if i == j: continue
+            res[i, j] = lamb[count]
+            count += 1
+    return res
+
+
+def flatten_lamb(lamb):
+    # remove diagonal entries
+    res = []
+    for i in range(lamb.shape[0]):
+        for j in range(lamb.shape[0]):
+            if i == j: continue
+            res += [lamb[i, j]]
+    return np.array(res).reshape(-1, 1)
 
 
 def cholseky_matrix(Z, eps=1e-9):

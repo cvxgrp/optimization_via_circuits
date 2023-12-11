@@ -209,12 +209,8 @@ class CircuitOpt(object):
                     'P': opti.variable(dim_G, dim_G) }
         P = ca.tril(ca_vars["P"])
         opti.subject_to( ca.diag(P) >= np.zeros((dim_G, 1)) )
-        if bounds is not None:
-            for name in bounds.keys():
-                if "ub" in bounds[name]:
-                    opti.subject_to( ca_vars[name] <= bounds[name]["ub"] )
-                if "lb" in bounds[name]:
-                    opti.subject_to( ca_vars[name] >= bounds[name]["lb"] )
+        ca_add_bounds(opti, bounds, ca_vars)
+
         list_of_leaf_functions = [function for function in Function.list_of_functions
                                   if function.get_is_leaf()]
         
@@ -261,7 +257,7 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
   
-    def solve_ca_canonical(self, verbose=True, debug=False, **kwargs):
+    def solve_ca_canonical(self, verbose=True, bounds=None, debug=False, **kwargs):
         # formulate problem explicitly as QCQP with matrices
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -279,6 +275,8 @@ class CircuitOpt(object):
         opti = ca.Opti()
         var_x = opti.variable(x_size + 20, 1)
         opti.subject_to(var_x[0] == 1)
+
+        # ca_add_bounds(opti, bounds, ca_vars)
 
         assert v_k_list[-1] == "FG_d", print(v_k_list)
 
@@ -561,8 +559,9 @@ class CircuitOpt(object):
         return dict_parameters_ciropt_gp(model, gp_vars), model, sp_exp
    
   
-    def solve_cvx_canonical_sdp_relax_all(self, verbose=True, debug=False, bounds=None, **kwargs):
+    def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False, bounds=None, **kwargs):
         # formulate problem explicitly as QCQP using x and matrix X
+        # variable x = vec(v, lambda, P)
         # and relax it to convex SDP to get bounds on the variables
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -585,15 +584,11 @@ class CircuitOpt(object):
         bnames2idx = {bname:idx for idx, bname in enumerate(bounds_names)}
         # SDP variables
         var_x = cp.Variable((x_size, 1))
-        # ub_x = 10000 * np.ones((x_size, 1))
-        # lb_x = -10000 * np.ones((x_size, 1))
         W = cp.Variable((x_size + 1, x_size + 1), symmetric=True)
         var_X = cp.Variable((x_size, x_size), symmetric=True)
         constraints = [ W >> 0, \
-                       var_X >> 0, # cp.abs(var_x) <= ub_x, \
+                       var_X >> 0, 
                       ]
-        # constraints += [cp.abs(W) <= 10000* np.ones((x_size + 1, x_size + 1)), \
-        #                 cp.abs(var_X) <= 10000* np.ones((x_size, x_size))]
 
         constraints += [ var_x[name2idx["b"]] >= 0.05, \
                          var_x[name2idx["h"]] >= 0.01, \
@@ -609,7 +604,7 @@ class CircuitOpt(object):
         constraints += [ diag_W >= np.zeros((x_size + 1)), \
                         W >= -(cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2 , \
                         W <=  (cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2, \
-                        # is true when equality holds X = x x^T
+                        # is true when equality holds X = xx^T
                         diag_X >= np.zeros((x_size)), \
                         var_X >= -(cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 , \
                         var_X <=  (cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 ]
@@ -671,8 +666,6 @@ class CircuitOpt(object):
         vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
         Q = np.zeros((dim_G, dim_G * (dim_G + 1) // 2))
         np.put_along_axis(Q, vec_diag_P_idx, 1, axis=1)
-        # P_diag_constraints = [Q]
-        # print( Q.shape, vec_P.shape, dim_G)
         constraints += [ Q @ I_P @ var_x >= np.zeros((dim_G, 1)) ]
 
         # bounds constraints
@@ -689,11 +682,8 @@ class CircuitOpt(object):
 
         obj = - cp.sum(bounds_vars)
         prob = cp.Problem(cp.Minimize(obj), constraints)
-        # prob.solve(solver='SCS', verbose=verbose)
-        # prob.solve(solver='CVXOPT', verbose=verbose)
-        # prob.solve(solver='SDPA', verbose=verbose)
-        prob.solve(solver=cp.CLARABEL, verbose=verbose)
-        # prob.solve(solver=cp.MOSEK, verbose=verbose)
+        # 'SCS', 'CVXOPT','SDPA', cp.CLARABEL, cp.MOSEK
+        prob.solve(solver=cvx_solver, verbose=verbose)
         print(f"{prob.status=}")
         self.prob = prob
         self.name2idx = name2idx
@@ -704,9 +694,9 @@ class CircuitOpt(object):
         return self.bounds_vars, prob, sp_exp
 
 
-    def solve_cvx_canonical_sdp_relax(self, verbose=True, debug=False, bounds=None, cvx_solver=cp.CLARABEL,**kwargs):
+    def bounds_sdp_relax(self, verbose=True, var_bound="Z", debug=False, bounds=None, cvx_solver=cp.CLARABEL, **kwargs):
         # formulate problem explicitly as QCQP using x and matrix X and Z
-        # keep Z=PP^T as it is, not aggregate into x
+        # keep Z=PP^T as it is, not aggregate into x = vec(p, lambda)
         # and relax it to convex SDP to get bounds on the variables
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -731,7 +721,7 @@ class CircuitOpt(object):
         W = cp.Variable((x_size + 1, x_size + 1), symmetric=True)
         var_X = cp.Variable((x_size, x_size), symmetric=True)
         var_Z = cp.Variable((dim_G, dim_G), symmetric=True)
-        constraints = [ W >> 0, var_X >> 0, var_Z >> 0]
+        constraints = [ W >> 0, var_Z >> 0 ]
         cvx_vars = { "Z": var_Z,  "x": var_x, "X": var_X}
 
         constraints += [ var_x[name2idx["b"]] >= 0.001, \
@@ -742,22 +732,18 @@ class CircuitOpt(object):
                         W[x_size : x_size+1, : x_size] == var_x.T, \
                         W[ : x_size, x_size : x_size+1] == var_x, \
                         W[x_size, x_size] == 1]
-        # implied linear constraints for PSD matrices W and X
+        # implied linear constraints for PSD matrix W
         diag_W = cp.diag(W)
-        diag_X = cp.diag(var_X)
         constraints += [ diag_W >= np.zeros((x_size + 1)), \
-                        W >= -(cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2 , \
-                        W <=  (cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2, \
-                        # is true when equality holds X = x x^T
-                        diag_X >= np.zeros((x_size)), \
-                        var_X >= -(cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 , \
-                        var_X <=  (cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 ]
+                        cp.abs(W) <= 0.5 * (cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) 
+                        ]
 
         constraints += [ -1 <= var_x[name2idx["alpha"]], 
                                var_x[name2idx["alpha"]] <= 1 , 
                          -1 <= var_x[name2idx["beta"]], 
                                var_x[name2idx["beta"]] <= 1, 
-                         var_x[0] == 1 ]
+                         var_x[0] == 1 
+                        ]
 
         assert v_k_list[-1] == "FG_d", print(v_k_list)
 
@@ -767,17 +753,7 @@ class CircuitOpt(object):
         I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
         I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
 
-        if bounds is not None:
-            for name in bounds.keys():
-                if name in cvx_vars: this_var = cvx_vars[name]
-                elif name in name2idx: this_var = var_x[name2idx[name]]
-                elif name == "lamb": this_var = I_lambs @ var_x
-                else: continue
-                print("set bounds for %s"%name)
-                if "ub" in bounds[name]:
-                    constraints += [ this_var <= bounds[name]["ub"] ]
-                if "lb" in bounds[name]:
-                    constraints += [ this_var >= bounds[name]["lb"] ]
+        constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
 
         # matrix coefficient for variable F is 0
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
@@ -827,10 +803,11 @@ class CircuitOpt(object):
                 constraints += [cp.abs(var_x[name2idx[name], 0]) <= bounds_vars[b_idx]]
 
         constraints += [  bounds_vars[bnames2idx["Z"]] <= cp.trace(var_Z), \
-                          bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.999)  ]
+                          bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.999),
+                          bounds_vars[bnames2idx["alpha"]] == var_x[name2idx["alpha"]],
+                          bounds_vars[bnames2idx["beta"]] == var_x[name2idx["beta"]],   ]
 
-        obj = - cp.sum(bounds_vars[bnames2idx["Z"]] + bounds_vars[bnames2idx["lamb"]])
-        # obj = - cp.sum(bounds_vars[bnames2idx["Z"]])
+        obj = - cp.sum(bounds_vars[bnames2idx[var_bound]])
         prob = cp.Problem(cp.Minimize(obj), constraints)
         # 'SCS', 'CVXOPT','SDPA', cp.CLARABEL, cp.MOSEK
         prob.solve(solver=cvx_solver, verbose=verbose)
@@ -844,7 +821,7 @@ class CircuitOpt(object):
         return self.bounds_vars, prob, sp_exp
 
 
-    def solve_cvx_fix_discr_sdp(self, params=None, verbose=True, debug=False, **kwargs):
+    def solve_cvx_fix_discr_sdp(self, params=None, cvx_solver=cp.CLARABEL, verbose=True, debug=False, **kwargs):
         # for fixed alpha, beta, h, b, d 
         # solve the corresponding SDP
         dim_G = Point.counter
@@ -883,11 +860,8 @@ class CircuitOpt(object):
         constraints += [cp.vec(obj_G @ v_value, order="C") + vec_Z == cp.vec(var_lambda.T @ (sum_ij_G @ v_value).squeeze(), order="C") ]
 
         prob = cp.Problem(cp.Minimize(0), constraints)
-        # prob.solve(solver='SCS', verbose=verbose)
-        # prob.solve(solver='CVXOPT', verbose=verbose)
-        # prob.solve(solver='SDPA', verbose=verbose)
-        prob.solve(solver=cp.CLARABEL, verbose=verbose)
-        # prob.solve(solver=cp.MOSEK, verbose=verbose)
+        # 'SCS', 'CVXOPT','SDPA', cp.CLARABEL, cp.MOSEK
+        prob.solve(solver=cvx_solver, verbose=verbose)
         print(f"{prob.status=}")
         self.prob = prob
         self.name2idx = name2idx
@@ -901,8 +875,8 @@ class CircuitOpt(object):
             return self.solve_gp(**kwargs)
         elif solver == "gp_canonical_X":
             return self.solve_gp_canonical_X(**kwargs)
-        elif solver == "cvx_sdp_relax":
-            return self.solve_cvx_canonical_sdp_relax(**kwargs)
+        elif solver == "bounds_sdp_relax":
+            return self.bounds_sdp_relax(**kwargs)
         elif solver == "ca":
             return self.solve_ca(**kwargs)
         elif solver == "ca_canonical":
