@@ -369,6 +369,37 @@ def sympy_expression_to_casadi(sp_expression, ca_vars, opti):
     return ca_expr
 
 
+def cvx_linearize_monomial(monomial, var_x, name2idx):
+    if monomial == []:
+        return 1
+    monomial = sorted(monomial)
+    for i in range(len(monomial) - 1):
+        new_variable = "_".join(monomial[:i+2])
+        if i == len(monomial)-2:
+            assert "_".join(monomial) == new_variable
+    return var_x[name2idx["_".join(monomial)]]
+
+
+def sympy_expression_to_cvx(sp_expression, var_x, name2idx):
+    if not isinstance(sp_expression, sp.Basic):
+        return float(sp_expression)
+    elif sp.simplify(sp_expression).free_symbols == set() or sp_expression.is_number:
+        return float(sp.simplify(sp_expression))
+    polynomial = sp.Poly(sp.simplify(sp_expression))
+    coeffs = polynomial.coeffs()
+    cvx_expr = 0
+    for i, monomial in enumerate(polynomial.monoms()):
+        variables_in_monomial = []
+        for var, exp in zip(polynomial.gens, monomial):
+            variables_in_monomial += var.name.split("_") * exp
+        if variables_in_monomial != list():
+            cvx_monomial = cvx_linearize_monomial(variables_in_monomial, var_x, name2idx)
+        else:
+            cvx_monomial = 1
+        cvx_expr += float(coeffs[i]) * cvx_monomial
+    return cvx_expr
+
+
 def multiply_dicts(dict1, dict2):
     product_dict = dict()
     for key1 in dict1.keys():
@@ -581,3 +612,34 @@ def gp_print_solutions(model, gp_vars, all=False):
         # print(model.printQuality())
         print(dict_parameters_ciropt_gp(model, gp_vars, all=all, Xn=True))
     model.Params.SolutionNumber = 0
+
+
+def matrix_to_diff_psd(A):
+    # split matrix A = A_plus - A_minus
+    # difference of two PSD matrices
+    symm = np.allclose(A, A.T)
+    if symm:
+        evals, V = np.linalg.eigh(A)
+        inv_V = V.T
+    else:
+        evals, V = np.linalg.eig(A)
+        inv_V = np.linalg.inv(V)
+    # assert np.allclose(A, (evals * V) @ inv_V)
+    idx = np.argsort(evals)
+    evals = evals[np.argsort(evals)]
+    V = V[:, idx]
+    inv_V = inv_V[idx, :]
+    # assert np.allclose(A, (evals * V) @ inv_V)
+    idx_positive_evals = np.where(evals>0)[0]
+    if idx_positive_evals.size > 0:
+        pos_idx = idx_positive_evals[0]
+        if pos_idx >= 1:
+            A_minus = -(evals[:pos_idx] * V[:, :pos_idx]) @ inv_V[:pos_idx, :]
+            A_plus = (evals[pos_idx:] * V[:, pos_idx:]) @ inv_V[pos_idx:, :]
+        else:
+            A_plus = A # A is PSD 
+            A_minus = 0
+    else:
+        A_plus = 0 
+        A_minus = - A # A is NSD
+    return A_plus, A_minus
