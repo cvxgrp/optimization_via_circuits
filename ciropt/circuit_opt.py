@@ -3,12 +3,16 @@ import numpy as np
 import sympy as sp
 import cvxpy as cp
 import dccp
+import qcqp as sni
+import scipy
 
 
 from ciropt.point import Point
 from ciropt.expression import Expression
 from ciropt.function import Function
 from ciropt.utils import *
+from ciropt.sympy_parsing import *
+from ciropt.sympy_to_solvers import *
 
 """
 Some of the code is borrowed from the PEPit https://github.com/PerformanceEstimation/PEPit
@@ -103,6 +107,7 @@ class CircuitOpt(object):
                     if i == j: continue 
                     lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(i,j))
                     f_interpolation_ineq_ij = function.list_of_class_constraints[counter]
+                    # expression is a linear combination of entries in G and F
                     Fweights_ij, Gweights_ij = self._expression_to_matrix(f_interpolation_ineq_ij, dim_G, dim_F)
                     sp_exp[(f_idx, i, j)] = {"F" : Fweights_ij, "G" : Gweights_ij}
                     counter += 1
@@ -258,7 +263,7 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
   
-    def solve_ca_canonical(self, verbose=True, bounds=None, debug=False, **kwargs):
+    def solve_ca_canonical(self, verbose=True, init_values=None, bounds=None, debug=False, **kwargs):
         # formulate problem explicitly as QCQP with matrices
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -288,6 +293,8 @@ class CircuitOpt(object):
         vec_v = get_vec_var(var_x, "v", vec_indices)
         vec_lambs = get_vec_var(var_x, "lamb", vec_indices)
         vec_P = get_vec_var(var_x, "P", vec_indices)
+
+        init_ca_ipopt(init_values, opti, vec_indices, var_x)
 
         # matrix coefficient for variable F is 0
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
@@ -320,7 +327,7 @@ class CircuitOpt(object):
             # print(f"{name=}, {pref_v=}, {v=}")
             ai = - one_hot(v_size, name2idx[name])
             # include both permutations for the product 
-            Qi = symm_prod_one_hot((v_size, v_size), name2idx[v], name2idx[pref_v])
+            Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
             opti.subject_to( vec_v.T @ Qi @ vec_v + ai.T @ vec_v == 0)
 
         # lambda >= 0 constraints
@@ -344,11 +351,11 @@ class CircuitOpt(object):
         self.opti = opti
         self.name2idx = name2idx
         self.v_names = v_names
-        self.vars = {"x": sol.value(var_x)}
+        self.vars = {"x": sol.value(var_x), "v_names":v_names}
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
 
-    def solve_ca_canonical_X(self, verbose=True, debug=False, **kwargs):
+    def solve_ca_canonical_X(self, verbose=True, init_values=None, debug=False, **kwargs):
         # formulate problem explicitly as QCQP using x and matrix X
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -370,13 +377,15 @@ class CircuitOpt(object):
         opti.subject_to(var_x[0] == 1)
         assert v_k_list[-1] == "FG_d", print(v_k_list)
 
-        vec_indices = { "v"   : [0, v_size - 1],\
-                        "lamb": [v_size, v_size + total_I_size - 1 ], \
+        vec_indices = { "v"   : [0, v_size - 1],
+                        "lamb": [v_size, v_size + total_I_size - 1 ], 
                         "P"  : [v_size + total_I_size, x_size - 1]} 
 
         I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
         I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
         I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
+
+        init_ca_ipopt(init_values, opti, vec_indices, var_x)
 
         # matrix coefficient for variable F is 0
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
@@ -407,7 +416,7 @@ class CircuitOpt(object):
             # print(f"{name=}, {pref_v=}, {v=}")
             ai = - one_hot(v_size, name2idx[name])
             # include both permutations for the product 
-            Qi = symm_prod_one_hot((v_size, v_size), name2idx[v], name2idx[pref_v])
+            Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
             opti.subject_to( ca.trace(I_v.T @ Qi @ I_v @ var_X)+ ai.T @ I_v @ var_x == 0)
 
         # lambda >= 0 constraints
@@ -431,7 +440,7 @@ class CircuitOpt(object):
         self.opti = opti
         self.name2idx = name2idx
         self.v_names = v_names
-        self.vars = {"x": sol.value(var_x)}
+        self.vars = {"x": sol.value(var_x), "v_names":v_names}
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
 
 
@@ -514,7 +523,7 @@ class CircuitOpt(object):
             # print(f"{name=}, {pref_v=}, {v=}")
             ai = - one_hot(v_size, name2idx[name])
             # include both permutations for the product 
-            Qi = symm_prod_one_hot((v_size, v_size), name2idx[pref_v], name2idx[v])
+            Qi = symm_prod_one_hot(v_size, name2idx[pref_v], name2idx[v])
             M1 = (I_v.T @ Qi @ I_v)
             M2 = ai.T @ I_v
             model.addConstr( gp_trace(M1 @ var_X) + (M2 @ var_x).item() == 0)
@@ -549,143 +558,11 @@ class CircuitOpt(object):
         self.model = model
         self.name2idx = name2idx
         self.v_names = v_names
-        self.vars = {"x": var_x.X}
+        self.vars = {"x": var_x.X, "v_names":v_names}
         return dict_parameters_ciropt_gp(model, gp_vars), model, sp_exp
    
-  
-    def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False, bounds=None, **kwargs):
-        # formulate problem explicitly as QCQP using x and matrix X
-        # variable x = vec(v, lambda, P)
-        # and relax it to convex SDP to get bounds on the variables
-        dim_G = Point.counter
-        dim_F = Expression.counter 
-        print(f"{dim_G=}, {dim_F=}")
-        list_of_leaf_functions = [function for function in Function.list_of_functions
-                                  if function.get_is_leaf()]
-        
-        core_vars = sorted(['alpha', 'beta', 'h', 'b', 'd'])
-        # bounds_names = sorted(['alpha', 'beta', 'h', 'b', 'd', 'P', "lamb"])
-        bounds_names = sorted(['alpha', 'beta', 'P', "lamb"])
 
-        sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
-
-        v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
-        v_size = len(v_names)
-        x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
-        
-        # bounds
-        bounds_vars = cp.Variable((len(bounds_names)))
-        bnames2idx = {bname:idx for idx, bname in enumerate(bounds_names)}
-        # SDP variables
-        var_x = cp.Variable((x_size, 1))
-        W = cp.Variable((x_size + 1, x_size + 1), symmetric=True)
-        var_X = cp.Variable((x_size, x_size), symmetric=True)
-        constraints = [ W >> 0, \
-                       var_X >> 0, 
-                      ]
-
-        constraints += [ var_x[name2idx["b"]] >= 0.05, \
-                         var_x[name2idx["h"]] >= 0.01, \
-                         var_x[name2idx["d"]] >= 0]
-        # constraints to encode X \succeq xx^T
-        constraints += [W[ : x_size, : x_size] == var_X, \
-                        W[x_size : x_size+1, : x_size] == var_x.T, \
-                        W[ : x_size, x_size : x_size+1] == var_x, \
-                        W[x_size, x_size] == 1]
-        # implied linear constraints
-        diag_W = cp.diag(W)
-        diag_X = cp.diag(var_X)
-        constraints += [ diag_W >= np.zeros((x_size + 1)), \
-                        W >= -(cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2 , \
-                        W <=  (cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2, \
-                        # is true when equality holds X = xx^T
-                        diag_X >= np.zeros((x_size)), \
-                        var_X >= -(cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 , \
-                        var_X <=  (cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 ]
-
-        constraints += [ var_x[name2idx["alpha"]] >= -1, \
-                        var_x[name2idx["alpha"]] <= 1 , \
-                        var_x[name2idx["beta"]] >= -1, \
-                        var_x[name2idx["beta"]] <= 1, \
-                        var_x[0] == 1 ]
-
-        assert v_k_list[-1] == "FG_d", print(v_k_list)
-
-        vec_indices = { "v"   : [0, v_size - 1],\
-                        "lamb": [v_size, v_size + total_I_size - 1 ], \
-                        "P"  : [v_size + total_I_size, x_size - 1]} 
-
-        I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-        I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
-        I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
-
-        # matrix coefficient for variable F is 0
-        obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
-        sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
-        assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
-        for k in range(dim_F):
-            assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0]), \
-            print(obj_F[k : k+1, :].shape, I_v.shape, sum_ij_F[:, k, :].shape, I_lambs.shape) 
-            constraints += [ cp.sum(obj_F[k : k+1, :] @ I_v @ var_x)  - cp.trace(I_lambs.T @ sum_ij_F[:, k, :] @ I_v @ var_X) == 0]
-
-        # matrix coefficient for variable G is 0
-        obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
-        sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-        assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
-        for k1 in range(dim_G):
-            for k2 in range(dim_G):
-                k_idx = k1 * dim_G + k2
-                S1, S2 = get_PPt_matrix(var_x, vec_indices, k1, k2)
-                constraints += [ cp.sum(obj_G[k_idx : k_idx+1, :] @ I_v @ var_x)  \
-                                + cp.trace(S1.T @ S2 @ var_X) \
-                                - cp.trace((I_lambs.T @ (sum_ij_G[:, k_idx, :] @ I_v)) @ var_X) == 0 ]
-
-        # v variables quadratic constraints
-        # v^T Qi v + ai^T v = 0 
-        for name in v_names[1:]:
-            vars = name.split("_")
-            if len(vars) == 1: continue
-            pref_v, v = "_".join(vars[:-1]), vars[-1]
-            ai = -one_hot(v_size, name2idx[name])
-            # include both permutations for the product 
-            Qi = symm_prod_one_hot((v_size, v_size), name2idx[v], name2idx[pref_v])
-            constraints += [ cp.trace(I_v.T @ Qi @ I_v @ var_X) + cp.sum(ai.T @ I_v @ var_x) == 0 ]
-
-        # lambda >= 0 constraints
-        constraints += [ I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
-        # diag(P) >= 0 constraints
-        vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
-        Q = np.zeros((dim_G, dim_G * (dim_G + 1) // 2))
-        np.put_along_axis(Q, vec_diag_P_idx, 1, axis=1)
-        constraints += [ Q @ I_P @ var_x >= np.zeros((dim_G, 1)) ]
-
-        # bounds constraints
-        for b_idx, name in enumerate(bounds_names):
-            if name in vec_indices:
-                var_name = get_vec_var(var_x, name, vec_indices)
-                constraints += [cp.abs(var_name[:, 0]) <= bounds_vars[b_idx] * np.ones(var_name.size)]
-            else:
-                constraints += [cp.abs(var_x[name2idx[name], 0]) <= bounds_vars[b_idx]]
-
-        constraints += [cp.square(bounds_vars[bnames2idx["P"]]) <= cp.trace(I_P @ var_X @ I_P.T), \
-                        bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.999)]
-        assert (I_P @ var_X @ I_P.T).shape[0] == dim_G * (dim_G + 1) // 2
-
-        obj = - cp.sum(bounds_vars)
-        prob = cp.Problem(cp.Minimize(obj), constraints)
-        # 'SCS', 'CVXOPT','SDPA', cp.CLARABEL, cp.MOSEK
-        prob.solve(solver=cvx_solver, verbose=verbose)
-        print(f"{prob.status=}")
-        self.prob = prob
-        self.name2idx = name2idx
-        self.v_names = v_names
-        self.var_x = var_x
-        self.bounds_vars = {name:bounds_vars.value[b_idx] for b_idx, name in enumerate(bounds_names) }
-        # self.bounds_vars["P"] = np.sqrt(self.bounds_vars["Z"])
-        return self.bounds_vars, prob, sp_exp
-
-
-    def solve_cvx_dccp(self, verbose=True, debug=False, bounds=None, **kwargs):
+    def solve_cvx_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kwargs):
         # solve QCQP problem using convex-concave procedure
         # using x=[vec(v), vec(lamb)] and Z
         # every matrix can be decomposed onto a difference of two PSD matrices
@@ -705,21 +582,20 @@ class CircuitOpt(object):
         
         # variables
         var_x = cp.Variable((x_size, 1))
-        var_X = cp.Variable((x_size, x_size), symmetric=True)
         var_Z = cp.Variable((dim_G, dim_G), symmetric=True)
-        constraints = [ var_Z >> 0, var_x[0] == 1, \
-                        var_X == var_x @ var_x.T
-                      ]
-        cvx_vars = { "Z": var_Z,  "x": var_x, "X":var_X}
+        constraints = [ var_Z >> 0, var_x[0] == 1 ]
+        cvx_vars = { "Z": var_Z,  "x": var_x}
 
-        constraints += [ var_x[name2idx["b"]] >= 0.001, \
-                         var_x[name2idx["h"]] >= 0.001, \
-                         var_x[name2idx["d"]] >= 0]
+        constraints += [ #cp.abs(var_Z) <= 1000,
+                        cp.abs(var_x) <= 10000]
 
-        constraints += [ -1 <= var_x[name2idx["alpha"]], 
+        constraints += [ var_x[name2idx["b"]] >= 0., \
+                         var_x[name2idx["h"]] >= 0., \
+                         var_x[name2idx["d"]] >= 0, 
+                         -1 <= var_x[name2idx["alpha"]], 
                                var_x[name2idx["alpha"]] <= 1 , 
                          -1 <= var_x[name2idx["beta"]], 
-                               var_x[name2idx["beta"]] <= 1, 
+                               var_x[name2idx["beta"]] <= 1
                         ]
 
         assert v_k_list[-1] == "FG_d", print(v_k_list)
@@ -731,31 +607,50 @@ class CircuitOpt(object):
         I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
         # bounds
         constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
-
         constraints += [I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
+        var_v = get_vec_var(var_x, "v", vec_indices)
 
         # matrix coefficient for variable F is 0
+        # |F| x |v|
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
-        sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
+        # |lambs| x |F| x |v|
+        sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size) 
         assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
         for k in range(dim_F):
             assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0]) 
-            Q_F = I_lambs.T @ (sum_ij_F[:, k, :] @ I_v)
-            q_F = obj_F[k : k+1, :] @ I_v
-            # Q_F_plus, Q_F_minus = co.matrix_to_diff_psd(Q_F)
-            constraints += [ q_F @ var_x - cp.trace(Q_F @ var_X) == 0]
+            block_Q_F = 0.5 * sum_ij_F[:, k, :]
+            Q_F = np.block([[np.zeros((v_size, v_size)), block_Q_F.T], 
+                            [block_Q_F, np.zeros((total_I_size, total_I_size))]])
+            q_F = obj_F[k : k+1, :]
+            Q_F_plus, Q_F_minus = matrix_to_diff_psd(Q_F)
+            if type(Q_F_plus) == int:
+                constraints += [ q_F @ var_v + cp.quad_form(var_x, Q_F_minus) == 0]
+            elif type(Q_F_minus) == int:
+                constraints += [ q_F @ var_v == cp.quad_form(var_x, Q_F_plus)]
+            else:
+                constraints += [ q_F @ var_v + cp.quad_form(var_x, Q_F_minus) == cp.quad_form(var_x, Q_F_plus)]
+            
 
         # matrix coefficient for variable G is 0
+        # |G| x |v|
         obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
+        # |lambs| x |G| x |v|
         sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
         assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
         for k1 in range(dim_G):
             for k2 in range(dim_G):
                 k_idx = k1 * dim_G + k2
-                Q_G = I_lambs.T @ (sum_ij_G[:, k_idx, :] @ I_v)
-                q_G = obj_G[k_idx : k_idx+1, :] @ I_v
-                # Q_G_plus, Q_G_minus = co.matrix_to_diff_psd(Q_G)
-                constraints += [ q_G @ var_x + var_Z[k1, k2] - cp.trace( Q_G @ var_X) == 0]
+                block_Q_G = 0.5 * sum_ij_G[:, k_idx, :]
+                Q_G = np.block([[np.zeros((v_size, v_size)), block_Q_G.T], 
+                                [block_Q_G, np.zeros((total_I_size, total_I_size))]])
+                q_G = obj_G[k_idx : k_idx+1, :]
+                Q_G_plus, Q_G_minus = matrix_to_diff_psd(Q_G)
+                if type(Q_G_plus) == int:
+                    constraints += [ q_G @ var_v + var_Z[k1, k2] + cp.quad_form(var_x, Q_G_minus) == 0]
+                elif type(Q_G_minus) == int:
+                    constraints += [ q_G @ var_v + var_Z[k1, k2] == cp.quad_form(var_x, Q_G_plus)]
+                else:
+                    constraints += [ q_G @ var_v + var_Z[k1, k2] + cp.quad_form(var_x, Q_G_minus) == cp.quad_form(var_x, Q_G_plus)]
 
         # v variables quadratic constraints
         # v^T Qi v + ai^T v = 0 
@@ -765,9 +660,18 @@ class CircuitOpt(object):
             pref_v, v = "_".join(vars[:-1]), vars[-1]
             # ai = - one_hot(v_size, name2idx[name])
             # include both permutations for the product 
-            # Qi = symm_prod_one_hot((v_size, v_size), name2idx[pref_v], name2idx[v]) 
-            i_idx, j_idx = name2idx[pref_v], name2idx[v]
-            constraints += [ 0.5 * (var_X[i_idx, j_idx] + var_X[j_idx, i_idx]) == var_x[name2idx[name]] ]
+            i_idx, j_idx = min(name2idx[pref_v], name2idx[v]), max(name2idx[pref_v], name2idx[v])
+            if i_idx == j_idx:
+                constraints += [ cp.square(var_x[i_idx]) == var_x[name2idx[name]] ]
+            else:
+                # Qi = symm_prod_one_hot(v_size, name2idx[pref_v], name2idx[v]) 
+                Qi_plus = 0.25 * np.ones((2,2))
+                Qi_minus = 0.25 * np.array(([1, -1], [-1, 1]))
+                assert np.allclose(Qi_plus - Qi_minus, np.array([[0, 0.5],[0.5, 0] ]))
+                var_x_ij = cp.vstack([var_x[i_idx], var_x[j_idx]])
+                constraints += [ cp.quad_form(var_x_ij, Qi_plus) == cp.quad_form(var_x_ij, Qi_minus) + var_x[name2idx[name]] ]
+                # i_idx, j_idx = name2idx[pref_v], name2idx[v]
+                # constraints += [ 0.5 * (var_X[i_idx, j_idx] + var_X[j_idx, i_idx]) == var_x[name2idx[name]] ]
 
         # lambda >= 0 constraints
         constraints += [ I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
@@ -776,15 +680,164 @@ class CircuitOpt(object):
         prob = cp.Problem(cp.Minimize(obj), constraints)
         print("problem is DCP:", prob.is_dcp())   # false
         print("problem is DCCP:", dccp.is_dccp(prob))  # true
-        prob.solve(method='dccp', verbose=verbose, max_iter=200)
+        prob.solve(method='dccp', verbose=verbose, max_iter=max_iter)
         print(f"{prob.status=}")
         self.prob = prob
         self.name2idx = name2idx
         self.v_names = v_names
         self.var_x = var_x
-        self.bounds_vars = {name:bounds_vars.value[b_idx] for b_idx, name in enumerate(bounds_names) }
-        self.bounds_vars["P"] = np.sqrt(self.bounds_vars["Z"])
-        return self.bounds_vars, prob, sp_exp
+        self.vars = {"x": var_x.value, "Z": var_Z.value, "v_names":v_names}
+        vars_vals = {name:var_x[name2idx[name], 0].value for name in core_vars}
+        return vars_vals, prob, sp_exp
+
+
+    def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kwargs):
+        # solve QCQP problem using suggest and improve procedure
+        # using x=[vec(v), vec(lamb)] and Z
+        # every matrix can be decomposed onto a difference of two PSD matrices
+        dim_G = Point.counter
+        dim_F = Expression.counter 
+        print(f"{dim_G=}, {dim_F=}")
+        list_of_leaf_functions = [function for function in Function.list_of_functions
+                                  if function.get_is_leaf()]
+        
+        core_vars = sorted(['alpha', 'beta', 'h', 'b', 'd'])
+
+        sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+
+        v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+        v_size = len(v_names)
+        x_size = len(v_names) + total_I_size + dim_G * (dim_G + 1) // 2
+        P_size = dim_G * (dim_G + 1) // 2
+        
+        # sni variables
+        sni_f0 = None
+        sni_fs = [] # Pc, qc, rc, op_name
+        # variables
+        var_x = cp.Variable((x_size, 1))
+        
+        sni_fs += [(scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(one_hot(x_size, 0)), -1, "=="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-one_hot(x_size, name2idx["b"])), 0, "<="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-one_hot(x_size, name2idx["h"])), 0, "<="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-one_hot(x_size, name2idx["d"])), 0, "<="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-one_hot(x_size, name2idx["alpha"])), -1, "<="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(one_hot(x_size, name2idx["alpha"])), -1, "<="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-one_hot(x_size, name2idx["beta"])), -1, "<="),
+                #    (scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(one_hot(x_size, name2idx["beta"])), -1, "<=")
+                   ]
+
+        assert v_k_list[-1] == "FG_d", print(v_k_list)
+
+        vec_indices = { "v"   : [0, v_size - 1],\
+                        "lamb": [v_size, v_size + total_I_size - 1 ],
+                        "P"  : [v_size + total_I_size, x_size - 1]} 
+
+        I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
+        I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+        I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
+        # bounds
+        # constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
+
+        # matrix coefficient for variable F is 0
+        # |F| x |v|
+        obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
+        # |lambs| x |F| x |v|
+        sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size) 
+        assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+        for k in range(dim_F):
+            assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0]) 
+            block_Q_F = 0.5 * sum_ij_F[:, k, :]
+            Q_F = scipy.sparse.bmat([[None, block_Q_F.T, None], 
+                                     [block_Q_F, None, None], 
+                                     [None, None, scipy.sparse.csr_matrix((P_size, P_size))]]).tocsr()
+            q_F = scipy.sparse.csc_matrix((obj_F[k : k+1, :] @ I_v).T)
+            sni_fs += [(-Q_F, q_F, 0, "==")]
+            
+
+        # matrix coefficient for variable G is 0
+        # |G| x |v|
+        obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
+        # |lambs| x |G| x |v|
+        sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
+        assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+        for k1 in range(dim_G):
+            for k2 in range(dim_G):
+                k_idx = k1 * dim_G + k2
+                block_Q_G = 0.5 * sum_ij_G[:, k_idx, :]
+                S1, S2 = get_PPt_matrix(var_x, vec_indices, k1, k2)
+                Q_G = (scipy.sparse.bmat([[None, block_Q_G.T, None], 
+                                     [block_Q_G, None, None], 
+                                     [None, None, scipy.sparse.csr_matrix((P_size, P_size))]]) \
+                     - scipy.sparse.csr_matrix(S1.T @ S2)).tocsr()
+                q_G = scipy.sparse.csc_matrix((obj_G[k_idx : k_idx+1, :] @ I_v).T)
+                sni_fs += [(-Q_G, q_G, 0, "==")]
+
+        # v variables quadratic constraints
+        # v^T Qi v + ai^T v = 0 
+        for name in v_names[1:]:
+            vars = name.split("_")
+            if len(vars) == 1: continue # monomial with degree 1
+            pref_v, v = "_".join(vars[:-1]), vars[-1]
+            ai = scipy.sparse.csc_matrix(-one_hot(x_size, name2idx[name]))
+            Qi = scipy.sparse.csr_matrix(symm_prod_one_hot(x_size, name2idx[pref_v], name2idx[v]))
+            sni_fs += [(Qi, ai, 0, "==")] 
+
+        # lambda >= 0 constraints
+        for i in range(I_lambs.shape[0]):
+            sni_fs += [(scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-I_lambs[i:i+1].T), 0, "<=")]
+        # diag(P) >= 0 constraints
+        vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
+        Q = np.zeros((dim_G, dim_G * (dim_G + 1) // 2))
+        np.put_along_axis(Q, vec_diag_P_idx, 1, axis=1)
+        M1 = Q @ I_P
+        # model.addConstr( M1 @ var_x >= np.zeros((dim_G, 1)) )
+        for i in range(M1.shape[0]):
+            sni_fs += [(scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(-M1[i:i+1].T), 0, "<=")]
+
+        q0 = scipy.sparse.csc_matrix(const_coeff_expr(-self.obj, name2idx, x_size))
+        sni_f0 = (scipy.sparse.csr_matrix((x_size, x_size)), q0, 0)
+        prob = sni.QCQPProblem(sni_f0, sni_fs, var_x)
+        qcqp = sni.QCQP(prob)
+
+        # SDR solution is cached and not solved again
+        # qcqp.suggest(sni.SDR, solver=cp.CLARABEL)
+        # print("SDR lower bound: %.4f" % qcqp.sdr_bound)
+        # f_dccp, v_dccp = qcqp.improve(sni.DCCP)
+        # print("Penalty CCP: objective %.4f, violation %.4f, v==0: %d" % (f_dccp, v_dccp, int(np.allclose(v_dccp, 0))))
+        # sample from the semidefinite relaxation
+        # qcqp.suggest(sni.SDR, solver=cp.CLARABEL)
+        # qcqp.suggest(sni.RANDOM, verbose=True, solver=cp.CLARABEL)
+        # print("SDR lower bound: %.4f" % qcqp.sdr_bound)
+        # f_cd, v_cd = qcqp.improve(sni.COORD_DESCENT)
+        # print("Coordinate descent: objective %.4f, violation %.4f" % (f_cd, v_cd))
+
+        # qcqp.suggest(sni.SDR, solver=cp.CLARABEL)
+        # print("SDR lower bound: %.4f" % qcqp.sdr_bound)
+        # f_ipopt, v_ipopt = qcqp.improve(sni.COORD_DESCENT)
+        # f_ipopt, v_ipopt = qcqp.improve(sni.IPOPT, verbose=True, init=False)
+        # print("Coordinate descent + ipopt: objective %.4f, violation %.4f" % (f_ipopt, v_ipopt))
+
+        qcqp.suggest(sni.RANDOM, solver=cp.CLARABEL)
+        # print("SDR lower bound: %.4f" % qcqp.sdr_bound)
+        f_ipopt, v_ipopt = qcqp.improve(sni.IPOPT, max_iter=500000, verbose=True, init=False)
+        print("Ipopt: objective %.4f, violation %.4f" % (f_ipopt, v_ipopt))
+
+        # f_dccp, v_dccp = qcqp.improve(sni.COORD_DESCENT, phase1=False)
+        # print("Penalty CCP + coordinate descent: objective %.4f, violation %.4f" % (f_dccp, v_dccp))
+
+        # qcqp.suggest(sni.SDR, solver=cp.CLARABEL)
+        # f_admm, v_admm = qcqp.improve(sni.COORD_DESCENT)
+        # f_admm, v_admm = qcqp.improve(sni.ADMM, phase1=False)
+        # print("Coordinate descent + nonconvex ADMM: objective %.4f, violation %.4f" % (f_admm, v_admm))
+
+        self.prob = prob
+
+        self.name2idx = name2idx
+        self.v_names = v_names
+        self.var_x = var_x
+        self.vars = {"x": var_x.value, "v_names":v_names}
+        vars_vals = {name:var_x[name2idx[name], 0].value for name in core_vars}
+        return vars_vals, prob, sp_exp
 
 
     def bounds_sdp_relax(self, verbose=True, var_bound="Z", debug=False, bounds=None, cvx_solver=cp.CLARABEL, **kwargs):
@@ -817,8 +870,8 @@ class CircuitOpt(object):
         constraints = [ W >> 0, var_Z >> 0 ]
         cvx_vars = { "Z": var_Z,  "x": var_x, "X": var_X}
 
-        constraints += [ var_x[name2idx["b"]] >= 0.001, \
-                         var_x[name2idx["h"]] >= 0.001, \
+        constraints += [ var_x[name2idx["b"]] >= 0.00001, \
+                         var_x[name2idx["h"]] >= 0.00001, \
                          var_x[name2idx["d"]] >= 0]
         # constraints to encode X >> xx^T
         constraints += [W[ : x_size, : x_size] == var_X, \
@@ -876,7 +929,7 @@ class CircuitOpt(object):
             pref_v, v = "_".join(vars[:-1]), vars[-1]
             ai = - one_hot(v_size, name2idx[name])
             # include both permutations for the product 
-            Qi = symm_prod_one_hot((v_size, v_size), name2idx[pref_v], name2idx[v]) 
+            Qi = symm_prod_one_hot(v_size, name2idx[pref_v], name2idx[v]) 
             constraints += [ cp.trace(I_v.T @ Qi @ I_v @ var_X) + cp.sum(ai.T @ I_v @ var_x) == 0 ]
 
         # lambda >= 0 constraints
@@ -978,4 +1031,6 @@ class CircuitOpt(object):
             return self.solve_cvx_fix_discr_sdp(**kwargs)
         elif solver == "cvx_dccp":
             return self.solve_cvx_dccp(**kwargs)
+        elif solver == "qcqp_sni":
+            return self.solve_qcqp_sni(**kwargs)
         

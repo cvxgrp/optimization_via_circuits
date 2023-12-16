@@ -9,6 +9,138 @@ from ciropt.utils import *
 
 
 
+  
+def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False, bounds=None, **kwargs):
+    # formulate problem explicitly as QCQP using x and matrix X
+    # variable x = vec(v, lambda, P)
+    # and relax it to convex SDP to get bounds on the variables
+    dim_G = Point.counter
+    dim_F = Expression.counter 
+    print(f"{dim_G=}, {dim_F=}")
+    list_of_leaf_functions = [function for function in Function.list_of_functions
+                                if function.get_is_leaf()]
+    
+    core_vars = sorted(['alpha', 'beta', 'h', 'b', 'd'])
+    # bounds_names = sorted(['alpha', 'beta', 'h', 'b', 'd', 'P', "lamb"])
+    bounds_names = sorted(['alpha', 'beta', 'P', "lamb"])
+
+    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_size = len(v_names)
+    x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
+    
+    # bounds
+    bounds_vars = cp.Variable((len(bounds_names)))
+    bnames2idx = {bname:idx for idx, bname in enumerate(bounds_names)}
+    # SDP variables
+    var_x = cp.Variable((x_size, 1))
+    W = cp.Variable((x_size + 1, x_size + 1), symmetric=True)
+    var_X = cp.Variable((x_size, x_size), symmetric=True)
+    constraints = [ W >> 0, \
+                    var_X >> 0, 
+                    ]
+
+    constraints += [ var_x[name2idx["b"]] >= 0.05, \
+                        var_x[name2idx["h"]] >= 0.01, \
+                        var_x[name2idx["d"]] >= 0]
+    # constraints to encode X \succeq xx^T
+    constraints += [W[ : x_size, : x_size] == var_X, \
+                    W[x_size : x_size+1, : x_size] == var_x.T, \
+                    W[ : x_size, x_size : x_size+1] == var_x, \
+                    W[x_size, x_size] == 1]
+    # implied linear constraints
+    diag_W = cp.diag(W)
+    diag_X = cp.diag(var_X)
+    constraints += [ diag_W >= np.zeros((x_size + 1)), \
+                    W >= -(cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2 , \
+                    W <=  (cp.outer(np.ones((x_size + 1)), diag_W) + cp.outer(diag_W, np.ones((x_size + 1))) ) / 2, \
+                    # is true when equality holds X = xx^T
+                    diag_X >= np.zeros((x_size)), \
+                    var_X >= -(cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 , \
+                    var_X <=  (cp.outer(np.ones((x_size)), diag_X) + cp.outer(diag_X, np.ones((x_size))) ) / 2 ]
+
+    constraints += [ var_x[name2idx["alpha"]] >= -1, \
+                    var_x[name2idx["alpha"]] <= 1 , \
+                    var_x[name2idx["beta"]] >= -1, \
+                    var_x[name2idx["beta"]] <= 1, \
+                    var_x[0] == 1 ]
+
+    assert v_k_list[-1] == "FG_d", print(v_k_list)
+
+    vec_indices = { "v"   : [0, v_size - 1],\
+                    "lamb": [v_size, v_size + total_I_size - 1 ], \
+                    "P"  : [v_size + total_I_size, x_size - 1]} 
+
+    I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
+
+    # matrix coefficient for variable F is 0
+    obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
+    sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
+    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    for k in range(dim_F):
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0]), \
+        print(obj_F[k : k+1, :].shape, I_v.shape, sum_ij_F[:, k, :].shape, I_lambs.shape) 
+        constraints += [ cp.sum(obj_F[k : k+1, :] @ I_v @ var_x)  - cp.trace(I_lambs.T @ sum_ij_F[:, k, :] @ I_v @ var_X) == 0]
+
+    # matrix coefficient for variable G is 0
+    obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
+    sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
+    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    for k1 in range(dim_G):
+        for k2 in range(dim_G):
+            k_idx = k1 * dim_G + k2
+            S1, S2 = get_PPt_matrix(var_x, vec_indices, k1, k2)
+            constraints += [ cp.sum(obj_G[k_idx : k_idx+1, :] @ I_v @ var_x)  \
+                            + cp.trace(S1.T @ S2 @ var_X) \
+                            - cp.trace((I_lambs.T @ (sum_ij_G[:, k_idx, :] @ I_v)) @ var_X) == 0 ]
+
+    # v variables quadratic constraints
+    # v^T Qi v + ai^T v = 0 
+    for name in v_names[1:]:
+        vars = name.split("_")
+        if len(vars) == 1: continue
+        pref_v, v = "_".join(vars[:-1]), vars[-1]
+        ai = -one_hot(v_size, name2idx[name])
+        # include both permutations for the product 
+        Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
+        constraints += [ cp.trace(I_v.T @ Qi @ I_v @ var_X) + cp.sum(ai.T @ I_v @ var_x) == 0 ]
+
+    # lambda >= 0 constraints
+    constraints += [ I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
+    # diag(P) >= 0 constraints
+    vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
+    Q = np.zeros((dim_G, dim_G * (dim_G + 1) // 2))
+    np.put_along_axis(Q, vec_diag_P_idx, 1, axis=1)
+    constraints += [ Q @ I_P @ var_x >= np.zeros((dim_G, 1)) ]
+
+    # bounds constraints
+    for b_idx, name in enumerate(bounds_names):
+        if name in vec_indices:
+            var_name = get_vec_var(var_x, name, vec_indices)
+            constraints += [cp.abs(var_name[:, 0]) <= bounds_vars[b_idx] * np.ones(var_name.size)]
+        else:
+            constraints += [cp.abs(var_x[name2idx[name], 0]) <= bounds_vars[b_idx]]
+
+    constraints += [cp.square(bounds_vars[bnames2idx["P"]]) <= cp.trace(I_P @ var_X @ I_P.T), \
+                    bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.999)]
+    assert (I_P @ var_X @ I_P.T).shape[0] == dim_G * (dim_G + 1) // 2
+
+    obj = - cp.sum(bounds_vars)
+    prob = cp.Problem(cp.Minimize(obj), constraints)
+    # 'SCS', 'CVXOPT','SDPA', cp.CLARABEL, cp.MOSEK
+    prob.solve(solver=cvx_solver, verbose=verbose)
+    print(f"{prob.status=}")
+    self.prob = prob
+    self.name2idx = name2idx
+    self.v_names = v_names
+    self.var_x = var_x
+    self.bounds_vars = {name:bounds_vars.value[b_idx] for b_idx, name in enumerate(bounds_names) }
+    # self.bounds_vars["P"] = np.sqrt(self.bounds_vars["Z"])
+    return self.bounds_vars, prob, sp_exp
+
 
 def gp_solve_qcqp_sdp_relax(verbose=True, debug=False, time_limit=1000, psm=1, ps=10, heur=0.001, method=0, bounds=None): 
     # formulate problem explicitly as QCQP using x and matrix X

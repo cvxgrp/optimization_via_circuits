@@ -5,6 +5,8 @@ import sympy as sp
 from ciropt.point import Point
 from ciropt.expression import Expression
 from ciropt.utils import *
+from ciropt.sympy_parsing import *
+from ciropt.sympy_to_solvers import *
 
 
 """
@@ -58,7 +60,8 @@ class Function(object):
         assert isinstance(other, float) or isinstance(other, int) or isinstance(other, sp.Basic)
         new_decomposition_dict = dict()
         for key, value in self.decomposition_dict.items():
-            new_decomposition_dict[key] = linearize_expression(value * other)
+            # new_decomposition_dict[key] = linearize_expression(value * other)
+            new_decomposition_dict[key] = value * other
         return Function(is_leaf=False,
                         decomposition_dict=new_decomposition_dict,
                         reuse_gradient=self.reuse_gradient)
