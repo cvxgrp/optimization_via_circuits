@@ -5,13 +5,15 @@ import cvxpy as cp
 
 
 
-def ca_add_bounds(opti, bounds, ca_vars):
+def ca_add_bounds(opti, bounds, ca_vars, name2idx):
     if bounds is not None:
-            for name in bounds.keys():
-                if "ub" in bounds[name]:
-                    opti.subject_to( ca_vars[name] <= bounds[name]["ub"] )
-                if "lb" in bounds[name]:
-                    opti.subject_to( ca_vars[name] >= bounds[name]["lb"] )
+        for name in bounds.keys():
+            if name is ca_vars: this_var = ca_vars[name]
+            elif name in name2idx: this_var = ca_vars["x"][name2idx[name]]
+            if "ub" in bounds[name]:
+                opti.subject_to( this_var <= bounds[name]["ub"] )
+            if "lb" in bounds[name]:
+                opti.subject_to( this_var >= bounds[name]["lb"] )
 
 
 def cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs):

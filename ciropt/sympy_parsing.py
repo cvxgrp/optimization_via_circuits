@@ -86,14 +86,6 @@ def sp_v_coeff_matrix(sp_exp, core_vars):
     return v_coeffs, v_names, name2idx, v_k_list
 
 
-def evaluate_monomial(v_name, params):
-    res = 1
-    if type(v_name) == int: return v_name
-    for var in v_name.split("_"):
-        res *= params[var]
-    return res
-
-
 def linear_matrix_expr_to_coeff_matrix(mat_expr, name2idx):
     # elements of mat_expr must be linear in sp_v = name2idx.keys()
     coeff_matrix = np.zeros((mat_expr.size, len(name2idx)))
@@ -276,6 +268,14 @@ def equal_sp_arrays(a, b):
                 return False
     return True
     
+
+def evaluate_monomial(v_name, params):
+    res = 1
+    if type(v_name) == int: return v_name
+    for var in v_name.split("_"):
+        res *= params[var]
+    return res
+
 
 def vars_to_vector(v_names, params):
     vec = np.zeros((len(v_names), 1))
