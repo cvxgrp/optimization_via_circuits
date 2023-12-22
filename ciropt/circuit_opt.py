@@ -10,6 +10,7 @@ import scipy
 from ciropt.point import Point
 from ciropt.expression import Expression
 from ciropt.function import Function
+from ciropt.constraint import Constraint
 from ciropt.utils import *
 from ciropt.sympy_parsing import *
 from ciropt.sympy_to_solvers import *
@@ -31,6 +32,7 @@ class CircuitOpt(object):
         self.list_of_functions = list()
         self.list_of_points = list()
         self.list_of_performance_metrics = list()
+        self.list_of_constraints = list()
 
 
     def _init_discretization_parameters(self):
@@ -63,6 +65,11 @@ class CircuitOpt(object):
         self.list_of_points.append(x)
         return x
     
+
+    def add_constraint(self, constraint):
+        assert isinstance(constraint, Constraint)
+        self.list_of_constraints.append(constraint)
+
     
     def set_performance_metric( self,  perf_metric):
         """
@@ -78,6 +85,7 @@ class CircuitOpt(object):
         # convert expression into matrix representation: function of F and G
         Fweights = np.zeros((dim_F), dtype=object)
         Gweights = np.zeros((dim_G, dim_G), dtype=object)
+        # print(type(expression))
         for key, sp_weight in expression.decomposition_dict.items():
             if not isinstance(sp_weight, sp.Basic) or sp.simplify(sp_weight).free_symbols == set():
                 sp_weight = float(sp_weight)
@@ -96,12 +104,25 @@ class CircuitOpt(object):
         sum_ij_La = np.zeros(dim_F, dtype=object)
         sum_ij_AC  = np.zeros((dim_G, dim_G), dtype=object)
         sp_exp = {}
-        total_I_size = 0
+        total_I_size = 0; shift_f_idx = 0
+        if self.list_of_constraints != list():
+            shift_f_idx = 1
+            for i, expr in enumerate(self.list_of_constraints):
+                # expression is a linear combination of entries in G and F
+                # TODO take care of equality constraints, ie, lamb \in R
+                Fweights_ij, Gweights_ij = self._expression_to_matrix(expr.expression, dim_G, dim_F)
+                prefix_name = "lamb0"
+                lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(i,0))
+                sp_exp[(0, i, 0)] = {"F" : Fweights_ij, "G" : Gweights_ij}
+                sum_ij_La += lamb_ij * Fweights_ij
+                sum_ij_AC += lamb_ij * Gweights_ij
+            total_I_size += len(self.list_of_constraints)
+
         for f_idx, function in enumerate(list_of_leaf_functions):
             function.add_class_constraints()
             size_I_function = len(function.list_of_points)
             counter = 0
-            prefix_name = "lamb%d"%f_idx
+            prefix_name = "lamb%d"%(f_idx + shift_f_idx)
             for i in range(size_I_function):
                 for j in range(size_I_function):
                     if i == j: continue 
@@ -109,7 +130,7 @@ class CircuitOpt(object):
                     f_interpolation_ineq_ij = function.list_of_class_constraints[counter]
                     # expression is a linear combination of entries in G and F
                     Fweights_ij, Gweights_ij = self._expression_to_matrix(f_interpolation_ineq_ij, dim_G, dim_F)
-                    sp_exp[(f_idx, i, j)] = {"F" : Fweights_ij, "G" : Gweights_ij}
+                    sp_exp[(f_idx + shift_f_idx, i, j)] = {"F" : Fweights_ij, "G" : Gweights_ij}
                     counter += 1
                     assert sum_ij_La.shape == Fweights_ij.shape and sum_ij_AC.shape == Gweights_ij.shape
                     sum_ij_La += lamb_ij * Fweights_ij
@@ -221,7 +242,7 @@ class CircuitOpt(object):
                                   if function.get_is_leaf()]
         
         sp_exp, total_I_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
-        size_I_function = int(np.ceil(np.sqrt(total_I_size)))
+        size_I_function = len(list_of_leaf_functions[0].list_of_points)
         for f_idx in range(len(list_of_leaf_functions)):
             lamb = opti.variable(size_I_function, size_I_function)
             ca_vars["lamb%d"%f_idx] = lamb
@@ -298,6 +319,9 @@ class CircuitOpt(object):
         vec_P = get_vec_var(var_x, "P", vec_indices)
 
         init_ca_ipopt(init_values, opti, vec_indices, var_x)
+        opti.subject_to(var_x[name2idx["b"]] >= 1e-7)
+        opti.subject_to(var_x[name2idx["h"]] >= 1e-7)
+        opti.subject_to(var_x[name2idx["d"]] >= 1e-7)
 
         # matrix coefficient for variable F is 0
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
@@ -343,9 +367,9 @@ class CircuitOpt(object):
         # print( Q.shape, vec_P.shape, dim_G)
         opti.subject_to( Q @ vec_P >= np.zeros((dim_G, 1)) )
 
-        opts = {}
+        opts = {'ipopt.max_iter':50000, "ipopt.tol": 1e-4, "ipopt.constr_viol_tol": 1e-4, "ipopt.dual_inf_tol": 1e-2} 
         if not verbose:
-            opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
+            opts.update({'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'})
         ca_vars = {name : var_x[idx] for name, idx in name2idx.items()}
         opti.minimize( - sympy_expression_to_casadi(self.obj, ca_vars, opti))
         if x0 is not None:
@@ -438,9 +462,9 @@ class CircuitOpt(object):
         # print( Q.shape, vec_P.shape, dim_G)
         opti.subject_to( Q @ I_P @ var_x >= np.zeros((dim_G, 1)) )
 
-        opts = {}
+        opts = {'ipopt.max_iter':50000}
         if not verbose:
-            opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
+            opts.update({'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'})
         ca_vars = {name : var_x[idx] for name, idx in name2idx.items()}
         opti.minimize( -sympy_expression_to_casadi(self.obj, ca_vars, opti))
         opti.solver('ipopt', opts)

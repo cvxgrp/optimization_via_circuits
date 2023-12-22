@@ -126,6 +126,7 @@ def main():
     alpha_init = co_vars["alpha"]
     beta_init = co_vars["beta"]
     lamb_init = co_vars["lamb0"]
+    co_vars["P_full"] = co_vars["P"]
     P_full_init = co_vars["P_full"]
     alpha_h_init = alpha_init * h_init
     beta_h_init = beta_init * h_init
