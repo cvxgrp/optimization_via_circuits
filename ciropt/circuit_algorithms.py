@@ -96,6 +96,154 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
     return problem
 
 
+def dual_decomposition(n_func, mu, L_smooth, Inductance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
+
+    fs = [0] * n_func
+    for i in range(n_func):
+        fs[i] = define_function(problem, mu, L_smooth, package)
+        if i == 0: f = fs[i]
+        else: f += fs[i]
+    x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
+    ys_star = [0] * n_func
+    for i in range(n_func):
+        yi, _ = fs[i].oracle(x_star)
+        ys_star[i] = yi
+
+    i_L_1 = [0] * n_func
+    xs_1 = [0] * n_func
+    for i in range(n_func):
+        if i < n_func-1:
+            yi_1 = problem.set_initial_point()
+            i_L_1[i] = yi_1
+            if i == 0: i_L_1[n_func-1] = -yi_1
+            else: i_L_1[n_func-1] -= yi_1
+        else:
+            yi_1 = i_L_1[n_func-1]
+        xi_1 = co_func.subgrad_conjugate(yi_1, fs[i])
+        xs_1[i] = xi_1
+        if i == 0: z_1 = xi_1
+        else: z_1 += xi_1
+    z_1 = z_1 / n_func
+
+    i_L_1p5 = [0] * n_func
+    for i in range(n_func):
+        i_L_1p5[i] = i_L_1[i] + (alpha * h / Inductance) * (z_1 - xs_1[i])
+    xs_1p5 = [0] * n_func
+    for i in range(n_func):
+        xi_1p5 = co_func.subgrad_conjugate(i_L_1p5[i], fs[i])
+        xs_1p5[i] = xi_1p5
+        if i == 0: z_1p5 = xi_1p5
+        else: z_1p5 += xi_1p5
+    z_1p5 = z_1p5 / n_func
+
+    i_L_2 = [0] * n_func
+    for i in range(n_func):
+        i_L_2[i] = i_L_1[i] + (beta * h / Inductance) * (z_1 - xs_1[i]) \
+                              + ((1 - beta) * h / Inductance) * (z_1p5 - xs_1p5[i])
+
+    E_1, E_2, Delta_1 = 0, 0, 0
+    for i in range(n_func):
+        E_1 += (Inductance/2) * (i_L_1[i] - ys_star[i])**2
+        E_2 += (Inductance/2) * (i_L_2[i] - ys_star[i])**2
+        Delta_1 += b * ((xs_1[i] - x_star) * (i_L_1[i] - ys_star[i]))
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+def primal_decomposition2(mu, L_smooth, Capacitance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
+    y1_star, _ = f1.oracle(x_star)
+    y2_star, _ = f2.oracle(x_star)
+    # y2_star = y_star - y1_star
+
+    z_1 = problem.set_initial_point()
+    y1_1, _ = f1.oracle(z_1)
+    y2_1, _ = f2.oracle(z_1)
+
+    z_1p5 = z_1 - (alpha * h / Capacitance) * (y1_1 + y2_1)
+    y1_1p5, _ = f1.oracle(z_1p5)
+    y2_1p5, _ = f2.oracle(z_1p5)
+
+    z_2 = z_1  - (beta * h / Capacitance) * (y1_1 + y2_1) \
+               - ((1 - beta) * h / Capacitance) * (y1_1p5 + y2_1p5)
+    y1_2, _ = f1.oracle(z_2)
+    y2_2, _ = f2.oracle(z_2)
+
+    E_1 = (Capacitance/2) * (z_1 - x_star)**2
+    E_2 = (Capacitance/2) * (z_2 - x_star)**2
+    Delta_1 = b * ((z_1 - x_star) * (y1_1 - y1_star) + (z_1 - x_star) * (y2_1 - y2_star))
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+def primal_decomposition(n_func, mu, L_smooth, Capacitance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
+
+    fs = [0] * n_func
+    for i in range(n_func):
+        fs[i] = define_function(problem, mu, L_smooth, package)
+        if i == 0: f = fs[i]
+        else: f += fs[i]
+    x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
+
+    z_1 = problem.set_initial_point()
+    for i in range(n_func):
+        yi_1, _ = fs[i].oracle(z_1)
+        if i == 0: sum_y_1 = yi_1
+        else: sum_y_1 += yi_1
+
+    z_1p5 = z_1 - (alpha * h / Capacitance) * sum_y_1
+    for i in range(n_func):
+        yi_1p5, _ = fs[i].oracle(z_1p5)
+        if i == 0: sum_y_1p5 = yi_1p5
+        else: sum_y_1p5 += yi_1p5
+
+    z_2 = z_1  - (beta * h / Capacitance) * sum_y_1 \
+               - ((1 - beta) * h / Capacitance) * sum_y_1p5
+
+    E_1 = (Capacitance/2) * (z_1 - x_star)**2
+    E_2 = (Capacitance/2) * (z_2 - x_star)**2
+    Delta_1 = b * ((z_1 - x_star) * (sum_y_1 - y_star))
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
 def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     if params is not None:
         # verification mode: PEP
@@ -121,20 +269,20 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     # i_L_0 = problem.set_initial_point()
     x2_0 = problem.set_initial_point()
 
-    # x1_1, g1_1, f1_1 = proximal_step(x2_0 + R * i_L_0, f1, R)
-    # x2_1, g2_1, f2_1 = proximal_step(x1_1 - R * i_L_0, f2, R)
-    x1_1, g1_1, f1_1 = proximal_step(x2_0, f1, R)
-    x2_1, g2_1, f2_1 = proximal_step(x1_1, f2, R)
+    # x1_1, y1_1, f1_1 = proximal_step(x2_0 + R * i_L_0, f1, R)
+    # x2_1, y2_1, f2_1 = proximal_step(x1_1 - R * i_L_0, f2, R)
+    x1_1, y1_1, f1_1 = proximal_step(x2_0, f1, R)
+    x2_1, y2_1, f2_1 = proximal_step(x1_1, f2, R)
     i_L_1 = (h / Inductance)  * (x2_1 - x1_1)
     # problem.add_constraint(Constraint(f_star - f1_1 - f2_1, "inequality"))
 
-    x1_1p5, g1_1p5, f1_1p5 = proximal_step(x2_1 + R * i_L_1, f1, R)
-    x2_1p5, g2_1p5, f2_1p5 = proximal_step(x1_1p5 - R * i_L_1, f2, R)
+    x1_1p5, y1_1p5, f1_1p5 = proximal_step(x2_1 + R * i_L_1, f1, R)
+    x2_1p5, y2_1p5, f2_1p5 = proximal_step(x1_1p5 - R * i_L_1, f2, R)
     i_L_1p5 = i_L_1 + (alpha * h / Inductance) * (x2_1 - x1_1)
     # problem.add_constraint(Constraint(f_star - f1_1p5 - f2_1p5, "inequality"))
 
-    x1_2, g1_2, f1_2 = proximal_step(x2_1p5 + R * i_L_1p5, f1, R)
-    x2_2, g2_2, f2_2 = proximal_step(x1_2 - R * i_L_1p5, f2, R)
+    x1_2, y1_2, f1_2 = proximal_step(x2_1p5 + R * i_L_1p5, f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(x1_2 - R * i_L_1p5, f2, R)
     i_L_2 = i_L_1 + (beta * h / Inductance) *  (x2_1 - x1_1) \
                   + ((1 - beta) * h / Inductance) * (x2_1p5 - x1_1p5)
     # problem.add_constraint(Constraint(f_star - f1_2 - f2_2, "inequality"))
@@ -142,7 +290,7 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 
     E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 
 
-    Delta_1 = d * R * (g1_1 - i_L_1)**2 + b * (f1_1 + f2_1 \
+    Delta_1 = d * R * (y1_1 - i_L_1)**2 + b * (f1_1 + f2_1 \
                             - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
     # Delta_1 = b * (f1_1 + f2_1 - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
@@ -249,7 +397,7 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
     return problem
 
 
-def admm_consensus_pep(mu, L_smooth, R, Inductance, params=None):
+def admm_consensus_proof(mu, L_smooth, R, Inductance, params=None):
     if params is not None:
         # verification mode: PEP
         problem = PEPit.PEP()
@@ -327,8 +475,8 @@ def admm_consensus2(mu, L_smooth, R, Inductance, params=None):
     i_L2_0 = - i_L1_0
     # initial potential at the bottom of circuit is e_0 = 0
 
-    x1_1, g1_1, f1_1 = proximal_step((R * i_L1_0), f1, R)
-    x2_1, g2_1, f2_1 = proximal_step((R * i_L2_0), f2, R)
+    x1_1, y1_1, f1_1 = proximal_step((R * i_L1_0), f1, R)
+    x2_1, y2_1, f2_1 = proximal_step((R * i_L2_0), f2, R)
     # potential at the bottom of circuit is average of potentials at fi's
     e_1 = (x1_1 + x2_1) / 2
     # L_x_e_ystar1 = - y1_star * (x1_1 - e_1) - y2_star * (x2_1 - e_1)
@@ -336,8 +484,8 @@ def admm_consensus2(mu, L_smooth, R, Inductance, params=None):
     i_L1_1 = i_L1_0 + ( h / Inductance) * (e_1 - x1_1) 
     i_L2_1 = i_L2_0 + ( h / Inductance) * (e_1 - x2_1) 
 
-    x1_2, g1_2, f1_2 = proximal_step((R * i_L1_1 + e_1), f1, R)
-    x2_2, g2_2, f2_2 = proximal_step((R * i_L2_1 + e_1), f2, R)
+    x1_2, y1_2, f1_2 = proximal_step((R * i_L1_1 + e_1), f1, R)
+    x2_2, y2_2, f2_2 = proximal_step((R * i_L2_1 + e_1), f2, R)
     e_2 = (x1_2 + x2_2) / 2
     i_L1_2 = i_L1_1 + (h / Inductance) * (e_2 - x1_2) 
     i_L2_2 = i_L2_1 + (h / Inductance) * (e_2 - x2_2) 
@@ -347,10 +495,12 @@ def admm_consensus2(mu, L_smooth, R, Inductance, params=None):
 
     E_1 = (Inductance/2) * (i_L1_1 - y1_star) ** 2 + (Inductance/2) * (i_L2_1 - y2_star) ** 2
     E_2 = (Inductance/2) * (i_L1_2 - y1_star) ** 2 + (Inductance/2) * (i_L2_2 - y2_star) ** 2
-    # Delta_1 = d * R * (g1_1 - i_L1_1)**2 + d * R * (g2_1 - i_L2_1)**2  + b * (f1_1 + f2_1 \
+    # Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  + b * (f1_1 + f2_1 \
     #                         - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
-    Delta_1 = d * R * (g1_1 - i_L1_1)**2 + d * R * (g2_1 - i_L2_1)**2  \
-            + b * ((x1_1 - x_star) * (g1_1 - y1_star) + (x2_1 - x_star) * (g2_1 - y2_star))
+    # Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  \
+    #         + b * ((x1_1 - x_star) * (y1_1 - y1_star) + (x2_1 - x_star) * (y2_1 - y2_star))
+    Delta_1 = d * R * (y1_2 - i_L1_2)**2 + d * R * (y2_2 - i_L2_2)**2  \
+            + b * ((x1_2 - x_star) * (y1_2 - y1_star) + (x2_2 - x_star) * (y2_2 - y2_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -381,8 +531,8 @@ def admm_consensus2_i1(mu, L_smooth, R, Inductance, params=None):
     i_L2_1 = - i_L1_1
     # initial potential at the bottom of circuit is e_0 = 0
 
-    x1_1, g1_1, f1_1 = proximal_step((R * i_L1_1), f1, R)
-    x2_1, g2_1, f2_1 = proximal_step((R * i_L2_1), f2, R)
+    x1_1, y1_1, f1_1 = proximal_step((R * i_L1_1), f1, R)
+    x2_1, y2_1, f2_1 = proximal_step((R * i_L2_1), f2, R)
 
     # potential at the bottom of circuit is average of potentials at fi's
     e_1 = (x1_1 + x2_1) / 2
@@ -391,22 +541,22 @@ def admm_consensus2_i1(mu, L_smooth, R, Inductance, params=None):
 
     i_L1_1p5 = i_L1_1 + (alpha * h / Inductance) * (e_1 - x1_1) 
     i_L2_1p5 = i_L2_1 + (alpha * h / Inductance) * (e_1 - x2_1) 
-    x1_1p5, g1_1p5, f1_1p5 = proximal_step((R * i_L1_1p5 + e_1), f1, R)
-    x2_1p5, g2_1p5, f2_1p5 = proximal_step((R * i_L2_1p5 + e_1), f2, R)
+    x1_1p5, y1_1p5, f1_1p5 = proximal_step((R * i_L1_1p5 + e_1), f1, R)
+    x2_1p5, y2_1p5, f2_1p5 = proximal_step((R * i_L2_1p5 + e_1), f2, R)
     e_1p5 = (x1_1p5 + x2_1p5) / 2
 
     i_L1_2 = i_L1_1 + (beta * h / Inductance) * (e_1 - x1_1) \
                               + ((1 - beta) * h / Inductance) * (e_1p5 - x1_1p5)
     i_L2_2 = i_L2_1 + (beta * h / Inductance) * (e_1 - x2_1) \
                               + ((1 - beta) * h / Inductance) * (e_1p5 - x2_1p5)
-    x1_2, g1_2, f1_2 = proximal_step((R * i_L1_2 + e_1p5), f1, R)
-    x2_2, g2_2, f2_2 = proximal_step((R * i_L2_2 + e_1p5), f2, R)
+    x1_2, y1_2, f1_2 = proximal_step((R * i_L1_2 + e_1p5), f1, R)
+    x2_2, y2_2, f2_2 = proximal_step((R * i_L2_2 + e_1p5), f2, R)
     e_2 = (x1_2 + x2_2) / 2
     L_x_e_ystar2 = - y1_star * (x1_2 - e_2) - y2_star * (x2_2 - e_2)
     problem.add_constraint(Constraint(f_star - f1_2 - f2_2 - L_x_e_ystar2, "inequality"))
 
     E_1 = (Inductance/2) * (i_L1_1 - y1_star) ** 2 + (Inductance/2) * (i_L2_1 - y2_star) ** 2
     E_2 = (Inductance/2) * (i_L1_2 - y1_star) ** 2 + (Inductance/2) * (i_L2_2 - y2_star) ** 2
-    Delta_1 = d * R * (g1_1 - i_L1_1)**2 + d * R * (g2_1 - i_L2_1)**2  + b * (f1_1 + f2_1 - f_star)
+    Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  + b * (f1_1 + f2_1 - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem

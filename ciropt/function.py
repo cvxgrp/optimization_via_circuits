@@ -190,6 +190,14 @@ def proximal_step(x0, func, gamma):
     x = x0 - gamma * gx
     func.add_point((x, gx, fx))
     return x, gx, fx
+
+
+def subgrad_conjugate(gx, func):
+    # subgradient of conjugate function
+    x = Point()
+    fx = Expression()
+    func.add_point((x, gx, fx))
+    return x
         
 
 

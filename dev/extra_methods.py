@@ -9,7 +9,48 @@ from ciropt.utils import *
 
 
 
-  
+def primal_decomposition2(mu, L_smooth, Capacitance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
+    y1_star, _ = f1.oracle(x_star)
+    y2_star, _ = f2.oracle(x_star)
+    # y2_star = y_star - y1_star
+
+    z_1 = problem.set_initial_point()
+    y1_1, _ = f1.oracle(z_1)
+    y2_1, _ = f2.oracle(z_1)
+
+    z_1p5 = z_1 - (alpha * h / Capacitance) * (y1_1 + y2_1)
+    y1_1p5, _ = f1.oracle(z_1p5)
+    y2_1p5, _ = f2.oracle(z_1p5)
+
+    z_2 = z_1  - (beta * h / Capacitance) * (y1_1 + y2_1) \
+               - ((1 - beta) * h / Capacitance) * (y1_1p5 + y2_1p5)
+    y1_2, _ = f1.oracle(z_2)
+    y2_2, _ = f2.oracle(z_2)
+
+    E_1 = (Capacitance/2) * (z_1 - x_star)**2
+    E_2 = (Capacitance/2) * (z_2 - x_star)**2
+    Delta_1 = b * ((z_1 - x_star) * (y1_1 - y1_star) + (z_1 - x_star) * (y2_1 - y2_star))
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
 
 def gp_solve_qcqp_sdp_relax(verbose=True, debug=False, time_limit=1000, psm=1, ps=10, heur=0.001, method=0, bounds=None): 
     # formulate problem explicitly as QCQP using x and matrix X

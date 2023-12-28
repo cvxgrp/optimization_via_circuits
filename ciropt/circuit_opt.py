@@ -300,7 +300,7 @@ class CircuitOpt(object):
         v_size = len(v_names)
         x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
         opti = ca.Opti()
-        var_x2 = opti.variable(x_size + 20, 1)
+        var_x2 = opti.variable(x_size + 50, 1)
         var_x = var_x2[:x_size]
         opti.subject_to(var_x[0] == 1)
 
