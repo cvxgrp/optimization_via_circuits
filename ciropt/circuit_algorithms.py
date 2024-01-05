@@ -193,8 +193,8 @@ def primal_decomposition2(mu, L_smooth, Capacitance, params=None):
 
     z_2 = z_1  - (beta * h / Capacitance) * (y1_1 + y2_1) \
                - ((1 - beta) * h / Capacitance) * (y1_1p5 + y2_1p5)
-    y1_2, _ = f1.oracle(z_2)
-    y2_2, _ = f2.oracle(z_2)
+    # y1_2, _ = f1.oracle(z_2)
+    # y2_2, _ = f2.oracle(z_2)
 
     E_1 = (Capacitance/2) * (z_1 - x_star)**2
     E_2 = (Capacitance/2) * (z_2 - x_star)**2
@@ -420,31 +420,89 @@ def admm_consensus_proof(mu, L_smooth, R, Inductance, params=None):
     x_star, y_star, func_star = func.stationary_point(return_gradient_and_function_value=True)
     y1_star, _ = f.oracle(x_star)
     y2_star = y_star - y1_star
-    # z0 = problem.set_initial_point()
-    y1_0 = problem.set_initial_point()
-    y2_0 = - y1_0
+    z1 = problem.set_initial_point()
+    y1_1 = problem.set_initial_point()
+    y2_1 = - y1_1
 
     # x1_1, grad_f_1, f_1 = proximal_step(z0, f, 1/rho)
     # x2_1, grad_g_1, g_1 = proximal_step(z0, g, 1/rho)
-    x1_1, grad_f_1, f_1 = proximal_step(- (1/rho) * y1_0, f, 1/rho)
-    x2_1, grad_g_1, g_1 = proximal_step(- (1/rho) * y2_0, g, 1/rho)
-    z1 = (x1_1 + x2_1) / 2
-    y1_1 = y1_0 - h * rho * (z1 - x1_1)
-    y2_1 = y2_0 - h * rho * (z1 - x2_1)
-    problem.add_constraint(Constraint(func_star - (f_1 + g_1 - y1_star * (x1_1 - z1) - y2_star * (x2_1 - z1)), "inequality"))
+    # x1_1, grad_f_1, f_1 = proximal_step(- (1/rho) * y1_0, f, 1/rho)
+    # x2_1, grad_g_1, g_1 = proximal_step(- (1/rho) * y2_0, g, 1/rho)
+    # z1 = (x1_1 + x2_1) / 2
+    # y1_1 = y1_0 - h * rho * (z1 - x1_1)
+    # y2_1 = y2_0 - h * rho * (z1 - x2_1)
+    # problem.add_constraint(Constraint(func_star - (f_1 + g_1 - y1_star * (x1_1 - z1) - y2_star * (x2_1 - z1)), "inequality"))
 
     x1_2, grad_f_2, f_2 = proximal_step(z1 - (1/rho) * y1_1, f, 1/rho)
     x2_2, grad_g_2, g_2 = proximal_step(z1 - (1/rho) * y2_1, g, 1/rho)
     z2 = (x1_2 + x2_2) / 2
     y1_2 = y1_1 - h * rho * (z2 - x1_2)
     y2_2 = y2_1 - h * rho * (z2 - x2_2)
-    problem.add_constraint(Constraint(func_star - (f_2 + g_2 - y1_star * (x1_2 - z2) - y2_star * (x2_2 - z2)), "inequality"))
+    # problem.add_constraint(Constraint(func_star - (f_2 + g_2 - y1_star * (x1_2 - z2) - y2_star * (x2_2 - z2)), "inequality"))
 
     E_1 = (1/rho) * (y1_1 + y1_star)**2 + (1/rho) * (y2_1 + y2_star)**2 + 2 * rho * (z1 - x_star)**2 
     E_2 = (1/rho) * (y1_2 + y1_star)**2 + (1/rho) * (y2_2 + y2_star)**2 + 2 * rho * (z2 - x_star)**2 
     Delta_1 = b * (rho * (x1_2 - z2)**2 + rho * (x2_2 - z2)**2) + d * rho * (z1 - z2)**2 
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+
+def decomp_euler_consensus2(mu, L_smooth, R, Inductance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        proximal_step = pep_proximal_step
+        Constraint = pep_constr
+        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        proximal_step = co_func.proximal_step
+        Constraint = co_constr
+        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
+    y1_star, _ = f1.oracle(x_star)
+    y2_star, _ = f2.oracle(x_star)
+    # y2_star = y_star - y1_star
+
+    i_L1_1 = problem.set_initial_point()
+    e_1 = problem.set_initial_point()
+    i_L2_1 = - i_L1_1
+    # initial potential at the bottom of circuit is e_1 = 0
+    # _ = f1.oracle(e_0); _ = f2.oracle(e_0)
+
+    x1_1, y1_1, f1_1 = proximal_step(e_1 + (R * i_L1_1), f1, R)
+    x2_1 = 2 * e_1 - x1_1
+    y2_1, f2_1 = f2.oracle(x2_1)
+
+    # e_1 = (x1_1 + x2_1) / 2
+    # _ = f1.oracle(e_1); _ = f2.oracle(e_1)
+    (f1 + f2).oracle(e_1)
+    # problem.add_constraint(Constraint(f_star - (f1_2 + f2_2 - y1_star * (x1_2 - e_2) - y2_star * (x2_2 - e_2)), "inequality"))
+    i_L1_2 = i_L1_1 + (h / Inductance) * (e_1 - x1_1) 
+    i_L2_2 = i_L2_1 + (h / Inductance) * (e_1 - x2_1) 
+    
+    # L_x_e_ystar2 = - y1_star * (x1_2 - e_2) - y2_star * (x2_2 - e_2)
+    # problem.add_constraint(Constraint(f_star - f1_2 - f2_2 - L_x_e_ystar2, "inequality"))
+
+    E_1 = (Inductance/2) * (i_L1_1 - y1_star) ** 2 + (Inductance/2) * (i_L2_1 - y2_star) ** 2
+    E_2 = (Inductance/2) * (i_L1_2 - y1_star) ** 2 + (Inductance/2) * (i_L2_2 - y2_star) ** 2
+    Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  + b * (f1_1 + f2_1 \
+                            - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
+    # Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  \
+    #         + b * ((x1_1 - x_star) * (y1_1 - y1_star) + (x2_1 - x_star) * (y2_1 - y2_star))
+    # Delta_1 = d * R * (y1_2 - i_L1_1)**2 + d * R * (y2_2 - i_L2_1)**2  \
+    #         + b * ((x1_2 - x_star) * (y1_2 - y1_star) + (x2_2 - x_star) * (y2_2 - y2_star))
+    # Delta_1 = d * R * (y1_2 - i_L1_2)**2 + d * R * (y2_2 - i_L2_2)**2  \
+    #         + b * ((x1_2 - x_star) * (y1_2 - y1_star) + (x2_2 - x_star) * (y2_2 - y2_star))
+    problem.set_performance_metric((E_2 - E_1) + Delta_1)
     return problem
 
 
@@ -471,24 +529,29 @@ def admm_consensus2(mu, L_smooth, R, Inductance, params=None):
     y2_star, _ = f2.oracle(x_star)
     # y2_star = y_star - y1_star
 
-    i_L1_0 = problem.set_initial_point()
-    i_L2_0 = - i_L1_0
-    # initial potential at the bottom of circuit is e_0 = 0
+    i_L1_1 = problem.set_initial_point()
+    e_1 = problem.set_initial_point()
+    i_L2_1 = - i_L1_1
+    # initial potential at the bottom of circuit is e_1 = 0
+    # _ = f1.oracle(e_1); _ = f2.oracle(e_1)
 
-    x1_1, y1_1, f1_1 = proximal_step((R * i_L1_0), f1, R)
-    x2_1, y2_1, f2_1 = proximal_step((R * i_L2_0), f2, R)
-    # potential at the bottom of circuit is average of potentials at fi's
-    e_1 = (x1_1 + x2_1) / 2
-    # L_x_e_ystar1 = - y1_star * (x1_1 - e_1) - y2_star * (x2_1 - e_1)
-    # problem.add_constraint(Constraint(f_star - f1_1 - f2_1 - L_x_e_ystar1, "inequality"))
-    i_L1_1 = i_L1_0 + ( h / Inductance) * (e_1 - x1_1) 
-    i_L2_1 = i_L2_0 + ( h / Inductance) * (e_1 - x2_1) 
+    # x1_1, y1_1, f1_1 = proximal_step(e_0 + (R * i_L1_0), f1, R)
+    # x2_1, y2_1, f2_1 = proximal_step(e_0 + (R * i_L2_0), f2, R)
+    # e_1 = (x1_1 + x2_1) / 2
+    # _ = f1.oracle(e_1); _ = f2.oracle(e_1)
+    # i_L1_1 = i_L1_0 + (h / Inductance) * (e_1 - x1_1) 
+    # i_L2_1 = i_L2_0 + (h / Inductance) * (e_1 - x2_1) 
 
-    x1_2, y1_2, f1_2 = proximal_step((R * i_L1_1 + e_1), f1, R)
-    x2_2, y2_2, f2_2 = proximal_step((R * i_L2_1 + e_1), f2, R)
+    x1_2, y1_2, f1_2 = proximal_step(e_1 + (R * i_L1_1), f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(e_1 + (R * i_L2_1), f2, R)
     e_2 = (x1_2 + x2_2) / 2
+    _ = f1.oracle(e_2); _ = f2.oracle(e_2)
+    # problem.add_constraint(Constraint(f_star - (f1_2 + f2_2 - y1_star * (x1_2 - e_2) - y2_star * (x2_2 - e_2)), "inequality"))
     i_L1_2 = i_L1_1 + (h / Inductance) * (e_2 - x1_2) 
     i_L2_2 = i_L2_1 + (h / Inductance) * (e_2 - x2_2) 
+
+    # problem.add_constraint(Constraint((e_1 - x1_1)**2 + (e_1 - x2_1)**2 - (e_2 - x1_1)**2 - (e_2 - x2_1)**2, "inequality"))
+    # problem.add_constraint(Constraint((e_2 - x1_2)**2 + (e_2 - x2_2)**2 - (e_1 - x1_2)**2 - (e_1 - x2_2)**2, "inequality"))
     
     # L_x_e_ystar2 = - y1_star * (x1_2 - e_2) - y2_star * (x2_2 - e_2)
     # problem.add_constraint(Constraint(f_star - f1_2 - f2_2 - L_x_e_ystar2, "inequality"))
@@ -499,9 +562,11 @@ def admm_consensus2(mu, L_smooth, R, Inductance, params=None):
     #                         - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
     # Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  \
     #         + b * ((x1_1 - x_star) * (y1_1 - y1_star) + (x2_1 - x_star) * (y2_1 - y2_star))
-    Delta_1 = d * R * (y1_2 - i_L1_2)**2 + d * R * (y2_2 - i_L2_2)**2  \
+    Delta_1 = d * R * (y1_2 - i_L1_1)**2 + d * R * (y2_2 - i_L2_1)**2  \
             + b * ((x1_2 - x_star) * (y1_2 - y1_star) + (x2_2 - x_star) * (y2_2 - y2_star))
-    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    # Delta_1 = d * R * (y1_2 - i_L1_2)**2 + d * R * (y2_2 - i_L2_2)**2  \
+    #         + b * ((x1_2 - x_star) * (y1_2 - y1_star) + (x2_2 - x_star) * (y2_2 - y2_star))
+    problem.set_performance_metric((E_2 - E_1) + Delta_1)
     return problem
 
 
