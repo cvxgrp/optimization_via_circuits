@@ -152,7 +152,7 @@ def dict_parameters_ciropt(sol, ca_vars, all=False):
     if all:
         keys_list = ca_vars.keys()
     else:
-        keys_list = ['b', 'h', 'd', 'alpha', 'beta']
+        keys_list = ['b', 'h', 'd', 'alpha', 'beta', 'gamma']
     for key in keys_list:
         try: res[key] = sol.value(ca_vars[key])
         except: pass

@@ -9,3 +9,4 @@ from ciropt.sympy_parsing import *
 from ciropt.utils import *
 from ciropt.circuit_algorithms import *
 from ciropt.sympy_to_solvers import *
+from ciropt.extra_methods import *

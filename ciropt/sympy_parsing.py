@@ -70,7 +70,7 @@ def sp_v_coeff_matrix(sp_exp, core_vars):
                     else:
                         variables_in_monomial = sorted(("_".join(variables_in_monomial)).split("_"))
                         # add new variable and all the prefix variables
-                        assert len(variables_in_monomial) >= 2, print(variables_in_monomial)
+                        assert len(variables_in_monomial) >= 2, print(mtype, monomial, variables_in_monomial)
                         prefix = variables_in_monomial[0]
                         for el in variables_in_monomial[1:]:
                             prefix += "_" + el

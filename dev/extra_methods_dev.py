@@ -2,110 +2,88 @@ import casadi as ca
 import numpy as np
 import sympy as sp
 
-from ciropt.point import Point
-from ciropt.expression import Expression
-from ciropt.function import Function
-from ciropt.utils import *
+import ciropt as co
 
 
-def admm_consensus2(mu, L_smooth, R, Inductance, params=None):
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP()
-        package = pep_func
-        proximal_step = pep_proximal_step
-        Constraint = pep_constr
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        proximal_step = co_func.proximal_step
-        Constraint = co_constr
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
+    # lazy form of optimization problem
+    dim_G = Point.counter
+    dim_F = Expression.counter 
+    print(f"{dim_G=}, {dim_F=}")
+    model = gp.Model() 
 
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
-    y1_star, _ = f1.oracle(x_star)
-    y2_star, _ = f2.oracle(x_star)
-    # y2_star = y_star - y1_star
+    gp_vars = { 'b': model.addVar(name='b', lb=0., ub=1000.),
+                'd': model.addVar(name='d', lb=0., ub=1000.),
+                'h': model.addVar(name='h', lb=0., ub=1000.),
+                'gamma': model.addVar(name='gamma', lb=0., ub=1000.),
+                'alpha': model.addVar(name='alpha', lb=-1., ub=1.),
+                'beta': model.addVar(name='beta', lb=-1., ub=1.),  
+                'P': model.addMVar((dim_G, dim_G), name='P', lb=-1000, ub=1000)  }
+    model.update()
+    if bounds is not None:
+        for name in bounds.keys():
+            if not name in gp_vars: continue
+            if "ub" in bounds[name]:
+                model.addConstr( gp_vars[name] <= bounds[name]["ub"] )
+            if "lb" in bounds[name]:
+                model.addConstr( gp_vars[name] >= bounds[name]["lb"] )
+    # P is lower triangular
+    model.addConstr( gp_vars["P"].diagonal() >= np.zeros(dim_G) )
+    for i in range(dim_G):
+        for j in range(i + 1, dim_G):
+            model.addConstr( gp_vars["P"][i, j] == 0 )
 
-    i_L1_0 = problem.set_initial_point()
-    i_L2_0 = - i_L1_0
-    # initial potential at the bottom of circuit is e_0 = 0
+    list_of_leaf_functions = [function for function in Function.list_of_functions
+                                if function.get_is_leaf()]
+    sp_exp, total_I_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
+    for f_idx in range(len(list_of_leaf_functions)):
+        name = "lamb%d"%(f_idx)
+        gp_vars[name] = model.addMVar((dim_F, dim_F), name=name, lb=0, ub=1000)
+        model.update()
+        if bounds is not None and name in bounds:
+            if "ub" in bounds[name]:
+                model.addConstr( gp_vars[name] <= bounds[name]["ub"] )
+            if "lb" in bounds[name]:
+                model.addConstr( gp_vars[name] >= bounds[name]["lb"] )
+        model.addConstr( gp_vars[name].diagonal() == np.zeros(dim_F) )
 
-    x1_1, y1_1, f1_1 = proximal_step((R * i_L1_0), f1, R)
-    x2_1, y2_1, f2_1 = proximal_step((R * i_L2_0), f2, R)
-    # potential at the bottom of circuit is average of potentials at fi's
-    e_1 = (x1_1 + x2_1) / 2
-    # L_x_e_ystar1 = - y1_star * (x1_1 - e_1) - y2_star * (x2_1 - e_1)
-    # problem.add_constraint(Constraint(f_star - f1_1 - f2_1 - L_x_e_ystar1, "inequality"))
-    i_L1_1 = i_L1_0 + ( h / Inductance) * (e_1 - x1_1) 
-    i_L2_1 = i_L2_0 + ( h / Inductance) * (e_1 - x2_1) 
+    assert sum_ij_La.shape == sp_exp["FG_d"]["F"].shape and sum_ij_AC.shape == sp_exp["FG_d"]["G"].shape
+    sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_d"]["F"])
+    sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) # sum_ij_AC - P @ P.T - Gweights_d
+    z1 = sympy_matrix_to_gurobi(sp_z1, gp_vars, model)
+    z2 = sympy_matrix_to_gurobi(sp_z2, gp_vars, model)
+    PPt = gp_vars["P"] @ gp_vars["P"].T
+    model.addConstrs(z1[i] == 0 for i in range(dim_F))
+    model.addConstrs(z2[i, j] - PPt[i, j].item() == 0 for i in range(dim_G) for j in range(dim_G))
+    if not verbose:
+        model.Params.LogToConsole = 0
+    # model.setObjective( - gp_vars["b"] - gp_vars["d"] )
+    model.update()
+    model.setObjective( -sympy_expression_to_gurobi(self.obj, gp_vars, model), gp.GRB.MINIMIZE)
+    model.Params.NonConvex = 2
+    model.Params.TimeLimit = time_limit
+    model.Params.FeasibilityTol = ftol
+    model.Params.Method = method
+    model.Params.PoolSearchMode = 1
+    model.Params.Heuristics = heur
+    # model.tune()
+    # for i in range(model.tuneResultCount):
+    #     model.getTuneResult(i)
+    #     model.write('tune'+str(i)+'.prm')
+    model.update()  
+    model.optimize()
+    if debug:
+        self.gp_expressions = {'z1': z1,\
+                            'z2': z2,\
+                            'P': gp_vars["P"], \
+                            'sum_ij_La':sympy_matrix_to_gurobi(simplify_matrix(sum_ij_La), gp_vars, model), \
+                            'sum_ij_AC':sympy_matrix_to_gurobi(simplify_matrix(sum_ij_AC), gp_vars, model), \
+                            'Fweights_d':sympy_matrix_to_gurobi(simplify_matrix(sp_exp["FG_d"]["F"]), gp_vars, model), \
+                            'Gweights_d':sympy_matrix_to_gurobi(simplify_matrix(sp_exp["FG_d"]["G"]), gp_vars, model) }
+    self.model = model
+    self.vars = gp_vars
+    return dict_parameters_ciropt_gp(model, gp_vars), model, sp_exp
 
-    x1_2, y1_2, f1_2 = proximal_step((R * i_L1_1 + e_1), f1, R)
-    x2_2, y2_2, f2_2 = proximal_step((R * i_L2_1 + e_1), f2, R)
-    e_2 = (x1_2 + x2_2) / 2
-    i_L1_2 = i_L1_1 + (h / Inductance) * (e_2 - x1_2) 
-    i_L2_2 = i_L2_1 + (h / Inductance) * (e_2 - x2_2) 
-    
-    # L_x_e_ystar2 = - y1_star * (x1_2 - e_2) - y2_star * (x2_2 - e_2)
-    # problem.add_constraint(Constraint(f_star - f1_2 - f2_2 - L_x_e_ystar2, "inequality"))
-
-    E_1 = (Inductance/2) * (i_L1_1 - y1_star) ** 2 + (Inductance/2) * (i_L2_1 - y2_star) ** 2
-    E_2 = (Inductance/2) * (i_L1_2 - y1_star) ** 2 + (Inductance/2) * (i_L2_2 - y2_star) ** 2
-    # Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  + b * (f1_1 + f2_1 \
-    #                         - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
-    # Delta_1 = d * R * (y1_1 - i_L1_1)**2 + d * R * (y2_1 - i_L2_1)**2  \
-    #         + b * ((x1_1 - x_star) * (y1_1 - y1_star) + (x2_1 - x_star) * (y2_1 - y2_star))
-    Delta_1 = d * R * (y1_2 - i_L1_2)**2 + d * R * (y2_2 - i_L2_2)**2  \
-            + b * ((x1_2 - x_star) * (y1_2 - y1_star) + (x2_2 - x_star) * (y2_2 - y2_star))
-    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
-    return problem
-
-
-def primal_decomposition2(mu, L_smooth, Capacitance, params=None):
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP() 
-        package = pep_func 
-        Constraint = pep_constr
-        proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        Constraint = co_constr
-        proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
-
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
-    y1_star, _ = f1.oracle(x_star)
-    y2_star, _ = f2.oracle(x_star)
-    # y2_star = y_star - y1_star
-
-    z_1 = problem.set_initial_point()
-    y1_1, _ = f1.oracle(z_1)
-    y2_1, _ = f2.oracle(z_1)
-
-    z_1p5 = z_1 - (alpha * h / Capacitance) * (y1_1 + y2_1)
-    y1_1p5, _ = f1.oracle(z_1p5)
-    y2_1p5, _ = f2.oracle(z_1p5)
-
-    z_2 = z_1  - (beta * h / Capacitance) * (y1_1 + y2_1) \
-               - ((1 - beta) * h / Capacitance) * (y1_1p5 + y2_1p5)
-    y1_2, _ = f1.oracle(z_2)
-    y2_2, _ = f2.oracle(z_2)
-
-    E_1 = (Capacitance/2) * (z_1 - x_star)**2
-    E_2 = (Capacitance/2) * (z_2 - x_star)**2
-    Delta_1 = b * ((z_1 - x_star) * (y1_1 - y1_star) + (z_1 - x_star) * (y2_1 - y2_star))
-    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
-    return problem
 
 
 def gp_solve_qcqp_sdp_relax(verbose=True, debug=False, time_limit=1000, psm=1, ps=10, heur=0.001, method=0, bounds=None): 
