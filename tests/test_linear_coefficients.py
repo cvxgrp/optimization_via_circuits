@@ -20,7 +20,7 @@ def main():
     # solver = "ca_canonical"
     solver = "ca_canonical_X"
     problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
-
+    problem.obj = problem.b + problem.d
     res, sol, sp_exp = problem.solve(solver=solver, verbose=False, debug=True)[:3]
 
     sp_v = np.array([1] + [sp.symbols(name) for name in problem.v_names[1:]])

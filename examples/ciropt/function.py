@@ -5,6 +5,8 @@ import sympy as sp
 from ciropt.point import Point
 from ciropt.expression import Expression
 from ciropt.utils import *
+from ciropt.sympy_parsing import *
+from ciropt.sympy_to_solvers import *
 
 
 """
@@ -58,7 +60,8 @@ class Function(object):
         assert isinstance(other, float) or isinstance(other, int) or isinstance(other, sp.Basic)
         new_decomposition_dict = dict()
         for key, value in self.decomposition_dict.items():
-            new_decomposition_dict[key] = linearize_expression(value * other)
+            # new_decomposition_dict[key] = linearize_expression(value * other)
+            new_decomposition_dict[key] = value * other
         return Function(is_leaf=False,
                         decomposition_dict=new_decomposition_dict,
                         reuse_gradient=self.reuse_gradient)
@@ -110,7 +113,8 @@ class Function(object):
                 gradient_of_last_leaf_function = g
                 value_of_last_leaf_function = f
                 number_of_currently_computed_gradients_and_values = 0
-                # enforce g = \sum_i w_i * g_i and f = \sum_i w_i * f_i
+                # enforce g = \sum_i w_i * g_i 
+                #         f = \sum_i w_i * f_i
                 for function, weight in list_of_functions_which_need_nothing + list_of_functions_which_need_something:
                     if number_of_currently_computed_gradients_and_values < total_number_of_involved_leaf_functions - 1:
                         grad, val = function.oracle(point)
@@ -136,7 +140,7 @@ class Function(object):
                 f = Expression(is_leaf=False, decomposition_dict=dict())
                 for function, weight in self.decomposition_dict.items():
                     f += weight * function.value(point=point)
-            else:
+            else: 
                 f = Expression(is_leaf=True, decomposition_dict=None)
         if list_of_functions_which_need_gradient_and_function_value == list() and list_of_functions_which_need_gradient_only == list():
             g = Point(is_leaf=False, decomposition_dict=dict())
@@ -167,9 +171,9 @@ class Function(object):
     def __call__(self, point):
         return self.value(point=point)
 
-    def stationary_point(self, return_gradient_and_function_value=True):
+    def stationary_point(self, return_gradient_and_function_value=False):
         point = Point(is_leaf=True, decomposition_dict=None)
-        # equivalent to having g=0
+        # equivalent to having g = 0
         g = Point(is_leaf=False, decomposition_dict=dict())
         f = Expression(is_leaf=True, decomposition_dict=None)
         self.add_point((point, g, f))
@@ -178,13 +182,22 @@ class Function(object):
         else:
             return point
 
-    def proximal_step(self, x0, gamma):
-        # (I + gamma * \partial f)x = x0
-        gx = Point()
-        fx = Expression()
-        x = x0 - gamma * gx
-        self.add_point((x, gx, fx))
-        return x, gx, fx
+
+def proximal_step(x0, func, gamma):
+    # (I + gamma * \partial f)x = x0
+    gx = Point()
+    fx = Expression()
+    x = x0 - gamma * gx
+    func.add_point((x, gx, fx))
+    return x, gx, fx
+
+
+def subgrad_conjugate(gx, func):
+    # subgradient of conjugate function
+    x = Point()
+    fx = Expression()
+    func.add_point((x, gx, fx))
+    return x
         
 
 
