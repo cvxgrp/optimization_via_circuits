@@ -2,8 +2,6 @@ import casadi as ca
 import numpy as np
 import sympy as sp
 import cvxpy as cp
-import dccp
-import qcqp as sni
 import scipy
 
 

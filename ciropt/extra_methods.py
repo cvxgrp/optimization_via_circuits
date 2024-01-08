@@ -1,8 +1,6 @@
 import casadi as ca
 import numpy as np
 import sympy as sp
-import dccp
-import qcqp as sni
 import scipy
 
 from ciropt.point import Point
@@ -108,7 +106,10 @@ def solve_ca_canonical_X(self, verbose=True, init_values=None, bounds=None, debu
 
 
 def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
-    # lazy form of optimization problem
+    try:
+        import gurobipy as gp
+    except ImportError:
+        raise Exception("Gurobi package is not installed.")
     dim_G = Point.counter
     dim_F = Expression.counter 
     print(f"{dim_G=}, {dim_F=}")
@@ -188,6 +189,10 @@ def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0
 
 
 def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
+    try:
+        import gurobipy as gp
+    except ImportError:
+        raise Exception("Gurobi package is not installed.")
     # formulate problem explicitly as QCQP using x and matrix X
     dim_G = Point.counter
     dim_F = Expression.counter 
@@ -306,6 +311,10 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
    
 
 def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kwargs):
+    try:
+        import qcqp as sni
+    except ImportError:
+        raise Exception("QCQP package is not installed.")
     # solve QCQP problem using suggest and improve procedure
     # using x=[vec(v), vec(lamb)] and Z
     # every matrix can be decomposed onto a difference of two PSD matrices
@@ -452,6 +461,10 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
 
 
 def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kwargs):
+    try:
+        import dccp
+    except ImportError:
+        raise Exception("DCCP package is not installed.")
     # solve QCQP problem using convex-concave procedure
     # using x=[vec(v), vec(lamb)] and Z
     # every matrix can be decomposed onto a difference of two PSD matrices
