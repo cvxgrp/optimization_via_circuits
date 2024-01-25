@@ -312,14 +312,15 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     y1_star, _ = f1.oracle(x_star)
     y2_star = y_star - y1_star
 
-    # i_L_0 = problem.set_initial_point()
+    i_L_0 = problem.set_initial_point()
     x2_0 = problem.set_initial_point()
 
-    # x1_1, y1_1, f1_1 = proximal_step(x2_0 + R * i_L_0, f1, R)
-    # x2_1, y2_1, f2_1 = proximal_step(x1_1 - R * i_L_0, f2, R)
-    x1_1, y1_1, f1_1 = proximal_step(x2_0, f1, R)
-    x2_1, y2_1, f2_1 = proximal_step(x1_1, f2, R)
-    i_L_1 = (h / Inductance)  * (x2_1 - x1_1)
+    x1_1, y1_1, f1_1 = proximal_step(x2_0 + R * i_L_0, f1, R)
+    x2_1, y2_1, f2_1 = proximal_step(x1_1 - R * i_L_0, f2, R)
+    i_L_1 = i_L_0 + (h / Inductance)  * (x2_1 - x1_1)
+    # x1_1, y1_1, f1_1 = proximal_step(x2_0, f1, R)
+    # x2_1, y2_1, f2_1 = proximal_step(x1_1, f2, R)
+    # i_L_1 = (h / Inductance)  * (x2_1 - x1_1)
 
     x1_1p5, y1_1p5, f1_1p5 = proximal_step(x2_1 + R * i_L_1, f1, R)
     x2_1p5, y2_1p5, f2_1p5 = proximal_step(x1_1p5 - R * i_L_1, f2, R)
@@ -336,6 +337,69 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     Delta_1 = d * R * (y1_1 - i_L_1)**2 \
               + b * (f1_1 + f2_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
     # Delta_1 = b * (f1_1 + f2_1 - f_star)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+def davis_yin_splitting(mu, L_smooth, R, Inductance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    f3 = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = (f1 + f2 + f3).stationary_point(return_gradient_and_function_value=True)
+    y1_star, _ = f1.oracle(x_star)
+    y2_star, _ = f2.oracle(x_star)
+    y3_star, _ = f3.oracle(x_star)
+    # y3_star = y_star - y1_star - y2_star
+
+    i_L_0 = problem.set_initial_point()
+    x2_0 = problem.set_initial_point()
+    y3_0, _ = f3.oracle(x2_0)
+    # s = R
+    e_0 = x2_0 - R * i_L_0 - R * y3_0
+
+    x1_1, y1_1, f1_1 = proximal_step(2 * x2_0 - e_0 - R * y3_0, f1, R)
+    x2_1, y2_1, f2_1 = proximal_step(x1_1 + e_0 - x2_0, f2, R)
+    i_L_1 = i_L_0 + (h / Inductance)  * (x2_1 - x1_1)
+    y3_1, f3_1 = f3.oracle(x2_1)
+    e_1 = x2_1 - R * y3_1 - R * i_L_1
+
+    x1_1p5, y1_1p5, f1_1p5 = proximal_step(2 * x2_1 - e_1 - R * y3_1, f1, R)
+    x2_1p5, y2_1p5, f2_1p5 = proximal_step(x1_1p5 + e_1 - x2_1, f2, R)
+    i_L_1p5 = i_L_1 + (alpha * h / Inductance) * (x2_1p5 - x1_1p5)
+    y3_1p5, _ = f3.oracle(x2_1p5)
+    e_1p5 = x2_1p5 - R * y3_1p5 - R * i_L_1p5
+
+    x1_2, y1_2, f1_2 = proximal_step(2 * x2_1p5 - e_1p5 - R * y3_1p5, f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(x1_2 + e_1p5 - x2_1p5, f2, R)
+    i_L_2 = i_L_1 + (beta * h / Inductance) *  (x2_1 - x1_1) \
+                  + ((1 - beta) * h / Inductance) * (x2_1p5 - x1_1p5)
+    y3_2, _ = f3.oracle(x2_2)
+    e_2 = x2_2 - R * y3_2 - R * i_L_2
+
+    e_star = x_star - R * y1_star - R * y3_star
+
+    # E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (x2_1 - x_star)**2  #+ gamma * (x2_1 - x_star)**2
+    # E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (x2_2 - x_star)**2  #+ gamma * (x2_2 - x_star)**2
+    E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (e_1 - e_star)**2  
+    E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (e_2 - e_star)**2  
+
+    # Delta_1 = d * (1 / R) * (x1_1 - x2_1)**2 \
+    #           + b * (f1_1 + f2_1 + f3_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - y3_star * (x2_1 - x_star) - f_star)
+    Delta_1 = d * (1 / R) * (x1_1 - x2_1)**2 \
+              + b * ((y1_1 - y1_star) * (x1_1 - x_star) + (y2_1 - y2_star) * (x2_1 - x_star) + (y3_1 - y3_star) * (x2_1 - x_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
