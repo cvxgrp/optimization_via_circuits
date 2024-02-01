@@ -28,7 +28,7 @@ def solve_ca_canonical_X(self, verbose=True, init_values=None, bounds=None, debu
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
     opti = ca.Opti()
-    var_x1 = opti.variable(x_size + 20, 1)
+    var_x1 = opti.variable(x_size + 60, 1)
     var_x = var_x1[:x_size]
     var_X = var_x @ var_x.T
     opti.subject_to(var_x[0] == 1)

@@ -10,6 +10,82 @@ from ciropt.constraint import Constraint as co_constr
 from ciropt.circuit_opt import CircuitOpt
 
 
+
+def admm_euler_consensus2(n_func, mu, L_smooth, R, Inductance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step 
+        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+
+    fs = [0] * n_func
+    for i in range(n_func):
+        fs[i] = define_function(problem, mu, L_smooth, package)
+        if i == 0: f = fs[i]
+        else: f += fs[i]
+    x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
+    ys_star = [0] * n_func
+    ys_star[-1] = y_star
+    for i in range(n_func-1):
+        gi, _ = fs[i].oracle(x_star)
+        ys_star[i] = gi
+        ys_star[-1] -= gi
+
+    i_Ls_1 = [0] * n_func
+    # initialize currents on inductors with \sum_l i_(L_l)(0)=0
+    for i in range(n_func-1):
+        i_Ls_1[i] = problem.set_initial_point()
+        if i == 0: i_Ls_1[-1] = -i_Ls_1[i]
+        else: i_Ls_1[-1] -= i_Ls_1[i]
+    e_1 = problem.set_initial_point()
+    triplets_1 = [0] * n_func
+    for i in range(n_func):
+        xi, gi, fi = proximal_step((R * i_Ls_1[i] + e_1), fs[i], R)
+        if i == 0: sum_xi_1 = xi
+        else: sum_xi_1 = sum_xi_1 + xi
+        triplets_1[i] = (xi, gi, fi)
+    i_Ls_1p5 = [0] * n_func
+    for i in range(n_func):
+        i_Ls_1p5[i] = i_Ls_1[i] + (alpha * h / Inductance) * (e_1 - triplets_1[i][0])
+    sum_xi_1 = sum_xi_1 / n_func
+    problem.add_constraint(Constraint( (e_1 - sum_xi_1) ** 2, "inequality"))
+    problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "inequality"))
+
+    triplets_1p5 = [0] * n_func
+    e_1p5 = problem.set_initial_point()
+    for i in range(n_func):
+        xi, gi, fi = proximal_step((R * i_Ls_1p5[i] + e_1p5), fs[i], R)
+        if i == 0: sum_xi_1p5 = xi
+        else: sum_xi_1p5 = sum_xi_1p5 + xi
+        triplets_1p5[i] = (xi, gi, fi)
+    i_Ls_2 = [0] * n_func
+    for i in range(n_func):
+        i_Ls_2[i] = i_Ls_1[i] + (beta * h / Inductance) * (e_1 - triplets_1[i][0]) \
+                              + ((1 - beta) * h / Inductance) * (e_1p5 - triplets_1p5[i][0])
+    sum_xi_1p5 = sum_xi_1p5 / n_func
+    problem.add_constraint(Constraint( (e_1p5 - sum_xi_1p5) ** 2, "inequality"))
+    problem.add_constraint(Constraint(-(e_1p5 - sum_xi_1p5) ** 2, "inequality"))
+    
+    E_1 = 0; E_2 = 0
+    Delta_1 = - b * f_star
+    for i in range(n_func):
+        E_1 += (Inductance/2) * (i_Ls_1[i] - ys_star[i]) ** 2
+        E_2 += (Inductance/2) * (i_Ls_2[i] - ys_star[i]) ** 2
+        Delta_1 += d * R * (triplets_1[i][1] - i_Ls_1[i]) ** 2 \
+                 + b *( triplets_1[i][2] - ys_star[i] * (triplets_1[i][0] - x_star))
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
 def ppm_circuit_original(mu, L_smooth, Capacitance, R, params=None): 
     # fixed stepsize h = CR
     if params is not None:

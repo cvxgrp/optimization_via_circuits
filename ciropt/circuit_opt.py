@@ -114,7 +114,7 @@ class CircuitOpt(object):
             shift_f_idx = 1
             for i, expr in enumerate(self.list_of_constraints):
                 # expression is a linear combination of entries in G and F
-                # TODO take care of equality constraints, ie, lamb \in R
+                # equality constraints expressed as two opposite inequality constraints
                 Fweights_ij, Gweights_ij = self._expression_to_matrix(expr.expression, dim_G, dim_F)
                 prefix_name = "lamb0"
                 lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(i,0))
@@ -227,7 +227,7 @@ class CircuitOpt(object):
         v_size = len(v_names)
         x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
         opti = ca.Opti()
-        var_x2 = opti.variable(x_size + 100, 1)
+        var_x2 = opti.variable(x_size + 150, 1)
         var_x = var_x2[:x_size]
         opti.subject_to(var_x[0] == 1)
 
@@ -390,10 +390,13 @@ class CircuitOpt(object):
         prob.solve(solver=cvx_solver, verbose=verbose)
         if verbose:
             print(f"{prob.status=}")
+        if prob.status != 'optimal':
+            raise Exception(f"Not a feasible solution, {prob.status=}")
         self.prob = prob
         self.name2idx = name2idx
         self.v_names = v_names
         self.vars = {"Z" : Z.value, "lambdas" : var_lambda.value}
+        self.vars.update(params)
         return self.vars, prob, sp_exp
    
 
