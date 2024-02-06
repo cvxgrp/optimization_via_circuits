@@ -3,9 +3,11 @@ import numpy as np
 import ciropt as co
 import sympy as sp
 
+
+
 def main():
     L_smooth = 1.
-    mu = 0.0001
+    mu = 0.00001
     Capacitance = 2.
     Inductance = 2.
     R = 1.
@@ -13,7 +15,7 @@ def main():
     solver = "ca"
     # ciropt definitions
     problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
-
+    problem.obj = problem.b + problem.d
     res, sol, sp_exp = problem.solve(verbose=False, solver=solver, debug=True)[:3]
     ca_vars = problem.vars
     print(res)
@@ -23,7 +25,7 @@ def main():
 
     # Grammian definitions
     size_I = 4          # I = { star, 1, 1.5, 2 }
-    dim_G = 6           # { x_P_star, x_P_1, y_L_1, g_1, g_1p5, g_2 }
+    dim_G = 6           # { x_star, x_1, i_L_1, g_1, g_1p5, g_2 }
     dim_F = 4           # { f_star, f_1, f_1p5, f_2}
 
     opti = ca.Opti()
@@ -53,58 +55,61 @@ def main():
     f_2   = co.one_hot(dim_F, 3)
     F = [f_star, f_1, f_1p5, f_2]
 
-    x_P_star = co.one_hot(dim_G, 0)
-    x_P_1    = co.one_hot(dim_G, 1)
-    y_L_1    = co.one_hot(dim_G, 2)
-    x_C_1 = x_P_1 + R * g_1 - R * y_L_1
-    y_L_1p5 = y_L_1 + (alpha_h / Inductance) * (x_C_1 - x_P_1) 
-    x_C_1p5 = x_C_1 - (alpha_h / Capacitance) * g_1
-    x_P_1p5 = R * y_L_1p5 + x_C_1p5 - R * g_1p5 
+    x_star = co.one_hot(dim_G, 0)
+    # x_1    = co.one_hot(dim_G, 1)
+    # i_L_1    = co.one_hot(dim_G, 2)
+    # v_C_1 = x_1 + R * g_1 - R * i_L_1
+    v_C_1    = co.one_hot(dim_G, 1)
+    i_L_1    = co.one_hot(dim_G, 2)
+    x_1 = v_C_1 + R * i_L_1 - R * g_1
+    i_L_1p5 = i_L_1 + (alpha_h / Inductance) * (v_C_1 - x_1) 
+    v_C_1p5 = v_C_1 - (alpha_h / Capacitance) * g_1
+    x_1p5 = R * i_L_1p5 + v_C_1p5 - R * g_1p5 
 
-    y_L_2 = y_L_1 + (beta_h / Inductance) * (x_C_1 - x_P_1) + \
-                    ((h - beta_h) / Inductance) * (x_C_1p5 - x_P_1p5) 
-    x_C_2 = x_C_1 - (beta_h / Capacitance) * g_1 - ((h - beta_h) / Capacitance) * g_1p5
-    x_P_2 = R * y_L_2 + x_C_2 - R * g_2
-    Xs = [x_P_star, x_P_1, x_P_1p5, x_P_2]
+    i_L_2 = i_L_1 + (beta_h / Inductance) * (v_C_1 - x_1) + \
+                    ((h - beta_h) / Inductance) * (v_C_1p5 - x_1p5) 
+    v_C_2 = v_C_1 - (beta_h / Capacitance) * g_1 - ((h - beta_h) / Capacitance) * g_1p5
+    x_2 = R * i_L_2 + v_C_2 - R * g_2
+    Xs = [x_star, x_1, x_1p5, x_2]
 
     sp_vars = {name : sp.symbols(name) for name in ca_vars.keys()}
-    sp_y_L_1p5 = y_L_1 + (sp_vars["alpha_h"] / Inductance) * (x_C_1 - x_P_1) 
-    sp_x_C_1p5 = x_C_1 - (sp_vars["alpha_h"] / Capacitance) * g_1
-    sp_x_P_1p5 = R * sp_y_L_1p5 + sp_x_C_1p5 - R * g_1p5 
+    sp_i_L_1p5 = i_L_1 + (sp_vars["alpha_h"] / Inductance) * (v_C_1 - x_1) 
+    sp_v_C_1p5 = v_C_1 - (sp_vars["alpha_h"] / Capacitance) * g_1
+    sp_x_1p5 = R * sp_i_L_1p5 + sp_v_C_1p5 - R * g_1p5 
 
-    sp_y_L_2 = y_L_1 + (sp_vars["beta_h"] / Inductance) * (x_C_1 - x_P_1) + \
-                    ((sp_vars["h"] - sp_vars["beta_h"]) / Inductance) * (sp_x_C_1p5 - sp_x_P_1p5)
-    sp_x_C_2 = x_C_1 - (sp_vars["beta_h"] / Capacitance) * g_1 - \
+    sp_i_L_2 = i_L_1 + (sp_vars["beta_h"] / Inductance) * (v_C_1 - x_1) + \
+                    ((sp_vars["h"] - sp_vars["beta_h"]) / Inductance) * (sp_v_C_1p5 - sp_x_1p5)
+    sp_v_C_2 = v_C_1 - (sp_vars["beta_h"] / Capacitance) * g_1 - \
                     ((sp_vars["h"] - sp_vars["beta_h"]) / Capacitance) * g_1p5 
-    sp_x_P_2 = R * sp_y_L_2 + sp_x_C_2 - R * g_2
+    sp_x_2 = R * sp_i_L_2 + sp_v_C_2 - R * g_2
 
-    sp_Xs = [x_P_star, x_P_1, sp_x_P_1p5, sp_x_P_2]
+    sp_Xs = [x_star, x_1, sp_x_1p5, sp_x_2]
 
     star_idx = 4
     A = lambda i,j: co.symm_prod(Gs[j], Xs[i] - Xs[j])
     B = lambda i,j: co.symm_prod(Xs[i] - Xs[j])
     C = lambda i,j: co.symm_prod(Gs[i] - Gs[j])
     D = lambda i,j: co.symm_prod(Xs[i] - Xs[j] - (1/L_smooth) * (Gs[i] - Gs[j]))
-    W_11 = co.symm_prod(Gs[1] - y_L_1, Gs[1] - y_L_1) 
-    E_1 = (Capacitance / 2) * (co.symm_prod(x_C_1 - x_P_star, x_C_1 - x_P_star)) \
-        +(Inductance / 2) * (co.symm_prod(y_L_1 - g_star, y_L_1 - g_star))
-    E_2 = (Capacitance / 2) * (co.symm_prod(x_C_2 - x_P_star, x_C_2 - x_P_star)) \
-        +(Inductance / 2) * (co.symm_prod(y_L_2 - g_star, y_L_2 - g_star))                      
+    W_11 = co.symm_prod(Gs[1] - i_L_1, Gs[1] - i_L_1) 
+    E_1 = (Capacitance / 2) * (co.symm_prod(v_C_1 - x_star, v_C_1 - x_star)) \
+        +(Inductance / 2) * (co.symm_prod(i_L_1 - g_star, i_L_1 - g_star))
+    E_2 = (Capacitance / 2) * (co.symm_prod(v_C_2 - x_star, v_C_2 - x_star)) \
+        +(Inductance / 2) * (co.symm_prod(i_L_2 - g_star, i_L_2 - g_star))                      
     a = lambda i,j: F[j] - F[i]
 
     sp_A = lambda i,j: co.symm_prod(Gs[j], sp_Xs[i] - sp_Xs[j])
     sp_B = lambda i,j: co.symm_prod(sp_Xs[i] - sp_Xs[j])
     sp_C = lambda i,j: co.symm_prod(Gs[i] - Gs[j])
     sp_D = lambda i,j: co.symm_prod(sp_Xs[i] - sp_Xs[j] - (1/L_smooth) * (Gs[i] - Gs[j]))
-    sp_E_1 = (Capacitance / 2) * (co.symm_prod(x_C_1 - x_P_star, x_C_1 - x_P_star)) \
-        +(Inductance / 2) * (co.symm_prod(y_L_1 - g_star, y_L_1 - g_star))
-    sp_E_2 = (Capacitance / 2) * (co.symm_prod(sp_x_C_2 - x_P_star, sp_x_C_2 - x_P_star)) \
-        +(Inductance / 2) * (co.symm_prod(sp_y_L_2 - g_star, sp_y_L_2 - g_star)) 
+    sp_E_1 = (Capacitance / 2) * (co.symm_prod(v_C_1 - x_star, v_C_1 - x_star)) \
+        +(Inductance / 2) * (co.symm_prod(i_L_1 - g_star, i_L_1 - g_star))
+    sp_E_2 = (Capacitance / 2) * (co.symm_prod(sp_v_C_2 - x_star, sp_v_C_2 - x_star)) \
+        +(Inductance / 2) * (co.symm_prod(sp_i_L_2 - g_star, sp_i_L_2 - g_star)) 
 
     assert (dim_G, dim_G) == A(1, 2).shape == B(1, 2).shape == C(1, 2).shape
     assert a(1, 2).shape == (dim_F, 1)
 
-    opti.minimize( -b - d )
+    opti.minimize( - b - d )
     opti.subject_to( alpha_h == alpha * h )
     opti.subject_to( beta_h == beta * h )
     opti.subject_to( alpha_h_h == alpha_h * h )
@@ -132,7 +137,7 @@ def main():
     opti.solver('ipopt', opts)
     sol = opti.solve()
     assert sol.stats()['success'], print(sol.stats())
-    print(sol.value(b), sol.value(d), sol.value(h), sol.value(alpha), sol.value(beta))
+    print(sol.value(b), sol.value(h), sol.value(d), sol.value(alpha), sol.value(beta))
 
     # compare matrices
     size_I_function = size_I
@@ -159,6 +164,7 @@ def main():
     alpha_init = co_vars["alpha"]
     beta_init = co_vars["beta"]
     lamb_init = co_vars["lamb0"]
+    co_vars["P_full"] = co_vars["P"]
     P_full_init = co_vars["P_full"]
     alpha_h_init = alpha_init * h_init
     beta_h_init = beta_init * h_init

@@ -4,7 +4,8 @@ import sympy as sp
 
 from ciropt.expression import Expression
 from ciropt.utils import *
-
+from ciropt.sympy_parsing import *
+from ciropt.sympy_to_solvers import *
 
 """
 Most of the code is borrowed from the PEPit https://github.com/PerformanceEstimation/PEPit
@@ -52,7 +53,8 @@ class Point(object):
         if isinstance(other, int) or isinstance(other, float) or isinstance(other, sp.Basic):
             new_decomposition_dict = dict()
             for key, value in self.decomposition_dict.items():
-                new_decomposition_dict[key] = linearize_expression(value * other)
+                # new_decomposition_dict[key] = linearize_expression(value * other)
+                new_decomposition_dict[key] = sp.simplify(value * other)
             return Point(is_leaf=False, decomposition_dict=new_decomposition_dict)
         elif isinstance(other, Point):
             decomposition_dict = multiply_dicts(self.decomposition_dict, other.decomposition_dict)

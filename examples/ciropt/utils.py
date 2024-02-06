@@ -1,9 +1,42 @@
 import sympy as sp
 import numpy as np
 import gurobipy as gp
+<<<<<<< HEAD
 
 
 
+=======
+import cvxpy as cp
+
+
+
+def ca_add_bounds(opti, bounds, ca_vars, name2idx):
+    if bounds is not None:
+        for name in bounds.keys():
+            if name is ca_vars: this_var = ca_vars[name]
+            elif name in name2idx: this_var = ca_vars["x"][name2idx[name]]
+            if "ub" in bounds[name]:
+                opti.subject_to( this_var <= bounds[name]["ub"] )
+            if "lb" in bounds[name]:
+                opti.subject_to( this_var >= bounds[name]["lb"] )
+
+
+def cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs):
+    if bounds is not None:
+        for name in bounds.keys():
+            if name in cvx_vars: this_var = cvx_vars[name]
+            elif name in name2idx: this_var = var_x[name2idx[name]]
+            elif name == "lamb": this_var = I_lambs @ var_x
+            else: continue
+            print("set bounds for %s"%name)
+            if "ub" in bounds[name]:
+                constraints += [ this_var <= bounds[name]["ub"] ]
+            if "lb" in bounds[name]:
+                constraints += [ this_var >= bounds[name]["lb"] ]
+    return constraints
+
+
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44
 def get_PPt_element(vec_P, k1, k2):
     def get_start_idx(k):
         return k * (k+1) // 2 
@@ -31,6 +64,7 @@ def get_PPt_matrix(x, vec_indices, k1, k2):
     return S1, S2
 
 
+<<<<<<< HEAD
 def evaluate_monomial(v_name, params):
     res = 1
     if type(v_name) == int: return v_name
@@ -46,6 +80,8 @@ def vars_to_vector(v_names, params):
     return vec
 
 
+=======
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44
 def get_vec_var(x, var_name, vec_indices, matrix=False):
     if matrix:
         num_rows = vec_indices[var_name][1] + 1 - vec_indices[var_name][0] 
@@ -57,6 +93,47 @@ def get_vec_var(x, var_name, vec_indices, matrix=False):
         return x[vec_indices[var_name][0] : vec_indices[var_name][1] + 1]
 
 
+<<<<<<< HEAD
+=======
+def reshape_lamb_2d(lamb):
+    size = int(np.sqrt(lamb.size)) + 1
+    res = np.zeros((size, size))
+    count = 0
+    for i in range(size):
+        for j in range(size):
+            if i == j: continue
+            res[i, j] = lamb[count]
+            count += 1
+    return res
+
+
+def flatten_lamb(lamb):
+    # remove diagonal entries
+    res = []
+    for i in range(lamb.shape[0]):
+        for j in range(lamb.shape[0]):
+            if i == j: continue
+            res += [lamb[i, j]]
+    return np.array(res).reshape(-1, 1)
+
+
+def flatten_lower_tri(P):
+    res = np.zeros(P.shape[0] * (P.shape[0]+1)//2)
+    for i in range(P.shape[0]):
+        res[i*(i+1)//2 : i*(i+1)//2 + i + 1] = P[i, :i+1]
+    return res
+
+
+def cholseky_matrix(Z, eps=1e-9):
+    Lamb, V = np.linalg.eigh(Z)
+    # print(Lamb)
+    assert np.allclose(V @ np.diag(Lamb) @ V.T, Z)
+    Z_plus = V @ np.diag(np.maximum(Lamb, eps)) @ V.T
+    P = np.linalg.cholesky(Z_plus)
+    return P
+
+
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44
 def stack_vectors(vectors, max_len):
     stacked_matrix = np.zeros((len(vectors), vectors[0].shape[0], max_len))
     for i, vector in enumerate(vectors):
@@ -64,6 +141,7 @@ def stack_vectors(vectors, max_len):
     return stacked_matrix
 
 
+<<<<<<< HEAD
 def sp_v_coeff_matrix(sp_exp, core_vars):
     # get constant coefficient matrices from linear expressions at the coordinates of F, G stored in sp_exp 
     # all matrices in sp_exp are linear in the linearized variables of core_vars
@@ -219,6 +297,8 @@ def sympy_expression_to_gurobi(sp_expression, gp_vars, model):
     return gp_expr
 
 
+=======
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44
 def gp_trace(M):
     tr = 0
     for i in range(M.shape[0]):
@@ -226,6 +306,7 @@ def gp_trace(M):
     return tr
 
 
+<<<<<<< HEAD
 def sympy_matrix_to_gurobi(sp_matrix, gp_vars, model):
     M = np.zeros(sp_matrix.shape, dtype=object)
     for i in range(M.shape[0]):
@@ -463,6 +544,8 @@ def equal_sp_arrays(a, b):
     return True
 
 
+=======
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44
 def one_hot(n, i, flatten=False):
     if flatten:
         return np.eye(n)[:, i]
@@ -494,7 +577,11 @@ def dict_parameters_ciropt(sol, ca_vars, all=False):
     if all:
         keys_list = ca_vars.keys()
     else:
+<<<<<<< HEAD
         keys_list = ['b', 'h', 'd', 'alpha', 'beta']
+=======
+        keys_list = ['b', 'h', 'd', 'alpha', 'beta', 'gamma']
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44
     for key in keys_list:
         try: res[key] = sol.value(ca_vars[key])
         except: pass
@@ -525,3 +612,38 @@ def gp_print_solutions(model, gp_vars, all=False):
         # print(model.printQuality())
         print(dict_parameters_ciropt_gp(model, gp_vars, all=all, Xn=True))
     model.Params.SolutionNumber = 0
+<<<<<<< HEAD
+=======
+
+
+def matrix_to_diff_psd(A):
+    # split matrix A = A_plus - A_minus
+    # difference of two PSD matrices
+    symm = np.allclose(A, A.T)
+    if symm:
+        evals, V = np.linalg.eigh(A)
+        inv_V = V.T
+    else:
+        evals, V = np.linalg.eig(A)
+        inv_V = np.linalg.inv(V)
+    # assert np.allclose(A, (evals * V) @ inv_V)
+    idx = np.argsort(evals)
+    evals = evals[np.argsort(evals)]
+    V = V[:, idx]
+    inv_V = inv_V[idx, :]
+    # assert np.allclose(A, (evals * V) @ inv_V)
+    idx_positive_evals = np.where(evals>0)[0]
+    if idx_positive_evals.size > 0:
+        pos_idx = idx_positive_evals[0]
+        if pos_idx >= 1:
+            A_minus = -(evals[:pos_idx] * V[:, :pos_idx]) @ inv_V[:pos_idx, :]
+            A_plus = (evals[pos_idx:] * V[:, pos_idx:]) @ inv_V[pos_idx:, :]
+        else:
+            A_plus = A # A is PSD 
+            A_minus = 0
+    else:
+        A_plus = 0 
+        A_minus = - A # A is NSD
+    assert np.allclose(A, A_plus - A_minus)
+    return A_plus, A_minus
+>>>>>>> 211c3e75cb4fca9940c084674cd4842253b38d44

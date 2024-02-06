@@ -3,6 +3,8 @@ import numpy as np
 import sympy as sp
 
 from ciropt.utils import *
+from ciropt.sympy_parsing import *
+from ciropt.sympy_to_solvers import *
 
 
 """
@@ -60,7 +62,8 @@ class Expression(object):
         assert isinstance(other, int) or isinstance(other, float) or isinstance(other, sp.Basic)
         new_decomposition_dict = dict()
         for key, value in self.decomposition_dict.items():
-            new_decomposition_dict[key] = linearize_expression(sp.simplify(value * other))
+            # new_decomposition_dict[key] = linearize_expression(sp.simplify(value * other))
+            new_decomposition_dict[key] = sp.simplify(value * other)
         return Expression(is_leaf=False, decomposition_dict=new_decomposition_dict)
 
     def __mul__(self, other):
