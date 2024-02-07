@@ -61,7 +61,7 @@ class CircuitOpt(object):
         f = function_class(is_leaf=True, decomposition_dict=None, **kwargs)
         self.list_of_functions.append(f)
         return f
-    
+ 
 
     def set_initial_point(self):
         x = Point(is_leaf=True, decomposition_dict=None)
