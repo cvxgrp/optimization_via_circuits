@@ -2,8 +2,6 @@ import casadi as ca
 import numpy as np
 import sympy as sp
 import cvxpy as cp
-import dccp
-# import qcqp as sni
 import scipy
 
 
@@ -104,6 +102,10 @@ class CircuitOpt(object):
     
 
     def circuit_symbolic_matrices(self, list_of_leaf_functions, dim_G, dim_F):
+        # extract coefficient matrices for variable F (function values) and variable G (Gram matrix)
+        # where coefficients are linear in p = (monomials of h, alpha, beta, b, d, gamma) 
+        # call p_coeffs, p_names, name2idx, _ = sp_v_coeff_matrix(sp_exp, core_vars) to decompose
+        # coefficients onto a dot product between vector of monomials p_names and with vector of constants p_coeffs
         sum_ij_La = np.zeros(dim_F, dtype=object)
         sum_ij_AC  = np.zeros((dim_G, dim_G), dtype=object)
         sp_exp = {}
@@ -258,8 +260,6 @@ class CircuitOpt(object):
             assert obj_F[k : k+1, :].shape[1] == vec_v.shape[0] and sum_ij_F[:, k, :].shape == (vec_lambs.shape[0], vec_v.shape[0]) 
             opti.subject_to(  obj_F[k : k+1, :] @ vec_v - vec_lambs.T @ sum_ij_F[:, k, :] @ vec_v == 0)
 
-        # opti.subject_to( res == np.zeros((dim_F, 1)) )
-
         # matrix coefficient for variable G is 0
         obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
         sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
@@ -288,7 +288,6 @@ class CircuitOpt(object):
         Q = np.zeros((dim_G, dim_G * (dim_G + 1) // 2))
         np.put_along_axis(Q, vec_diag_P_idx, 1, axis=1)
         # P_diag_constraints = [Q]
-        # print( Q.shape, vec_P.shape, dim_G)
         opti.subject_to( Q @ vec_P >= np.zeros((dim_G, 1)) )
 
         opts = {'ipopt.max_iter':50000,} #"ipopt.tol": 1e-4, "ipopt.constr_viol_tol": 1e-4, "ipopt.dual_inf_tol": 1e-2} 
@@ -366,7 +365,6 @@ class CircuitOpt(object):
         
         v_value = vars_to_vector(v_names, params)
         v_size = len(v_names)
-        # print(f"{v_value[:10].T=} \n{v_names[:10]=}")
         
         # SDP variables
         var_lambda = cp.Variable((lambda_size, 1), nonneg=True)
