@@ -281,6 +281,7 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
 
     # lambda >= 0 constraints
     model.addConstr( I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1)))
+    model.addConstr( I_lambs @ var_x <= 10 * np.ones((I_lambs.shape[0], 1))) ## trying upper bound
     # diag(P) >= 0 constraints
     vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
     Q = np.zeros((dim_G, dim_G * (dim_G + 1) // 2))
@@ -288,6 +289,7 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
     # P_diag_constraints = [Q]
     M1 = Q @ I_P
     model.addConstr( M1 @ var_x >= np.zeros((dim_G, 1)) )
+    model.addConstr( M1 @ var_x <= 10 * np.ones((dim_G, 1)) )## trying upper bound
 
     if not verbose:
         model.Params.LogToConsole = 0
