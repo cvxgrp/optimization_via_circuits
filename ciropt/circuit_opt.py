@@ -191,11 +191,13 @@ class CircuitOpt(object):
 
         opti.minimize( - sympy_expression_to_casadi(self.obj, ca_vars, opti))
         opti.solver('ipopt', opts)
+        self.vars = ca_vars
         try:
             sol = opti.solve() # QCQP for solving CircuitOpt
         except:
             if debug:
                 self.ca_vars = ca_vars
+            print("Could not find a solution using Ipopt")
             return None, ca_vars, None, sp_exp
         assert sol.stats()['success'], print(sol.stats())
         if debug:
@@ -321,7 +323,10 @@ class CircuitOpt(object):
     solve_sdp_relax = solve_sdp_relax
 
 
-    def solve_bisection_b(self, freq=20, params=None, max_iters=100, cvx_solver=cp.CLARABEL, **kwargs):
+    def solve_bisection_b(self, freq=20, params=None, max_iters=30, cvx_solver=cp.CLARABEL, **kwargs):
+        # given discretization parameters in params
+        # do bisection on b by checking if the resulting SDP subject to params and b
+        # is feasible
         dim_G = Point.counter
         dim_F = Expression.counter 
         list_of_leaf_functions = [function for function in Function.list_of_functions
@@ -337,12 +342,12 @@ class CircuitOpt(object):
             params["b"] = b
             try:
                 prob = self.solve_fix_discr_sdp(params=params, cvx_solver=cvx_solver, inputs=inputs, verbose=False)[1]
-                if prob.status == 'optimal':
-                    return b
                 if t % freq == 0: print(f"{t=}, {b=}, {prob.status=}")
+                if prob.status == 'optimal':
+                    return params, b
             except: pass
             b /= 2
-        return b
+        return params, b
 
 
     def solve_fix_discr_sdp(self, params=None, cvx_solver=cp.CLARABEL, verbose=True, debug=False, inputs=None, **kwargs):
@@ -390,8 +395,8 @@ class CircuitOpt(object):
         prob.solve(solver=cvx_solver, verbose=verbose)
         if verbose:
             print(f"{prob.status=}")
-        if prob.status != 'optimal':
-            raise Exception(f"Not a feasible solution, {prob.status=}")
+        # if prob.status != 'optimal':
+        #     raise Exception(f"Not a feasible solution, {prob.status=}")
         self.prob = prob
         self.name2idx = name2idx
         self.v_names = v_names

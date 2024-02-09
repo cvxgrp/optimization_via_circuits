@@ -8,7 +8,7 @@ import cvxpy as cp
 def ca_add_bounds(opti, bounds, ca_vars, name2idx):
     if bounds is not None:
         for name in bounds.keys():
-            if name is ca_vars: this_var = ca_vars[name]
+            if name in ca_vars: this_var = ca_vars[name]
             elif name in name2idx: this_var = ca_vars["x"][name2idx[name]]
             if "ub" in bounds[name]:
                 opti.subject_to( this_var <= bounds[name]["ub"] )
