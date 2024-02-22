@@ -664,14 +664,16 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        # h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, b, d = params["h"], params["b"], params["d"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        # h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, b, d = problem.h, problem.b, problem.d
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -682,36 +684,41 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
     x1_star, y1_star, f1_star = proximal_step(x2_star, f1, R)
     x3_star, y3_star, f3_star = proximal_step(x2_star, f3, R)
     x2_star_v2, y2_star_v2, f2_star_v2 = proximal_step((x1_star + x3_star)/2, f2, R/2)
+    # problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2, "inequality"))
+    # problem.add_constraint(Constraint(-(x2_star - x2_star_v2) ** 2, "inequality"))
+    problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2 + (y2_star - y2_star_v2) ** 2 , "inequality"))
+    problem.add_constraint(Constraint(-(x2_star - x2_star_v2) ** 2 - (y2_star - y2_star_v2) ** 2 , "inequality"))
+    # problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2 + (y2_star - y2_star_v2) ** 2 + (f2_star - f2_star_v2) ** 2, "inequality"))
+    # problem.add_constraint(Constraint(-(x2_star - x2_star_v2) ** 2 - (y2_star - y2_star_v2) ** 2 - (f2_star - f2_star_v2) ** 2, "inequality"))
     # problem.add_constraint(Constraint( (y1_star + y2_star + y3_star) ** 2, "inequality"))
     # problem.add_constraint(Constraint(-(y1_star + y2_star + y3_star) ** 2, "inequality"))
-    problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2, "inequality"))
-    problem.add_constraint(Constraint(-(x2_star - x2_star_v2) ** 2, "inequality"))
     # problem.add_constraint(Constraint( (y2_star - y2_star_v2) ** 2, "inequality"))
     # problem.add_constraint(Constraint(-(y2_star - y2_star_v2) ** 2, "inequality"))
 
     x1_1 = problem.set_initial_point()
-    y1_1, _ = f1.oracle(x1_1)
+    y1_1, f1_1 = f1.oracle(x1_1)
     x2_1 = problem.set_initial_point()
-    y2_1, _ = f2.oracle(x2_1)
+    y2_1, f2_1 = f2.oracle(x2_1)
     x3_1 = problem.set_initial_point()
-    y3_1, _ = f3.oracle(x3_1)
+    y3_1, f3_1 = f3.oracle(x3_1)
 
-    x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (x1_1 - x2_1) / R ) 
-    y1_2, _ = f1.oracle(x1_2)
+    x1_2 = x1_1 - ( h / Capacitance) * (y1_1 + (x1_1 - x2_1) / R ) 
+    y1_2, f1_2 = f1.oracle(x1_2)
     x2_2 = x2_1 - ( h / Capacitance) * (y2_1 + (x2_1 - x1_1 + x2_1 - x3_1) / R ) 
-    y2_2, _ = f2.oracle(x2_2)
+    y2_2, f2_2 = f2.oracle(x2_2)
     x3_2 = x3_1 - ( h / Capacitance) * (y3_1 + (x3_1 - x2_1) / R )
-    y3_2, _ = f3.oracle(x3_2)
+    y3_2, f3_2 = f3.oracle(x3_2)
 
     E_1 = (Capacitance/2) * ((x1_1 - x1_star)**2 + (x2_1 - x2_star)**2 + (x3_1 - x3_star)**2) 
-            # + gamma * (((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2))
     E_2 = (Capacitance/2) * ((x1_2 - x1_star)**2 + (x2_2 - x2_star)**2 + (x3_2 - x3_star)**2) 
-            # + gamma * (((y1_2 - y1_star)**2 + (y2_2 - y2_star)**2 + (y3_2 - y3_star)**2))
     # Delta_1 = d * (1 / R) * ((x1_1 - x2_1 - (x1_star - x2_star))**2 + (x3_1 - x2_1 - (x3_star - x2_star))**2) + \
     #           b * ((x1_1 - x1_star) * (y1_1 - y1_star) + (x2_1 - x2_star) * (y2_1 - y2_star) + (x3_1 - x3_star) * (y3_1 - y3_star))
-    Delta_2 = d * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
-              b * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) + (x3_2 - x3_star) * (y3_2 - y3_star))
-    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
+    # Delta_2 = d * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
+    #           b * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) + (x3_2 - x3_star) * (y3_2 - y3_star))
+    Delta_3 = b * ( f1_2 + f2_2 + f3_2 - ( f1_star + f2_star + f3_star ) )
+    Delta_3 += d * (x1_2)**2 + 2 * (x2_2)**2 + (x3_2)**2 - 2 * x1_2 * x2_2 - 2 * x2_2 * x3_2 
+    Delta_3 += - d * ( (x1_star)**2 + (x2_star)**2 + (x3_star)**2 - 2 * x1_star * x2_star - 2 * x2_star * x3_star ) 
+    problem.set_performance_metric(E_2 - (E_1 - Delta_3))
     return problem
 
 
