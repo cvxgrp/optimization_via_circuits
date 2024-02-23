@@ -169,10 +169,17 @@ class CircuitOpt(object):
                                   if function.get_is_leaf()]
         
         sp_exp, total_I_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
-        size_I_function = len(list_of_leaf_functions[0].list_of_points)
-        for f_idx in range(len(list_of_leaf_functions)):
+        shift_f_idx = 0
+        if self.list_of_constraints != list():
+            shift_f_idx = 1
+            lamb = opti.variable(len(self.list_of_constraints), 1)
+            ca_vars["lamb0"] = lamb
+            opti.subject_to( lamb >= np.zeros((len(self.list_of_constraints), 1)) )
+
+        for f_idx, function in enumerate(list_of_leaf_functions):
+            size_I_function = len(function.list_of_points)
             lamb = opti.variable(size_I_function, size_I_function)
-            ca_vars["lamb%d"%f_idx] = lamb
+            ca_vars["lamb%d"%(f_idx + shift_f_idx)] = lamb
             opti.subject_to( ca.reshape(lamb, (-1, 1)) >= np.zeros((size_I_function * size_I_function, 1)) )
 
         sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_d"]["F"])
@@ -184,7 +191,7 @@ class CircuitOpt(object):
         opts = {'ipopt.max_iter':50000}
         if not verbose:
             opts.update({'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'})
-        print(f"{opts=}")
+        # print(f"{opts=}")
         if init_vals is not None:
             for name, var_value in init_vals.items():
                 opti.set_initial(ca_vars[name], var_value)
@@ -300,7 +307,13 @@ class CircuitOpt(object):
         if x0 is not None:
             opti.set_initial(var_x, x0)
         opti.solver('ipopt', opts)
-        sol = opti.solve() # QCQP for solving CircuitOpt
+        try:
+            sol = opti.solve() # QCQP for solving CircuitOpt
+        except:
+            if debug:
+                self.ca_vars = ca_vars
+            print("Could not find a solution using Ipopt")
+            return None, ca_vars, None, sp_exp
         assert sol.stats()['success'], print(sol.stats())
         self.opti = opti
         self.name2idx = name2idx

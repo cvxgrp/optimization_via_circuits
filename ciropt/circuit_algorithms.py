@@ -49,7 +49,8 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
 
     E_1 = (Capacitance/2) * (x_1 - x_star)**2
     E_2 = (Capacitance/2) * (x_2 - x_star)**2
-    Delta_1 = b * (f_1 - f_star)
+    # Delta_1 = b * (f_1 - f_star)
+    Delta_1 = b * (x_1 - x_star) * (y_1 - y_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -697,20 +698,26 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
     y3_1, _ = f3.oracle(x3_1)
 
     x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (x1_1 - x2_1) / R ) 
-    y1_2, _ = f1.oracle(x1_2)
+    y1_2, f1_2 = f1.oracle(x1_2)
     x2_2 = x2_1 - ( h / Capacitance) * (y2_1 + (x2_1 - x1_1 + x2_1 - x3_1) / R ) 
-    y2_2, _ = f2.oracle(x2_2)
+    y2_2, f2_2 = f2.oracle(x2_2)
     x3_2 = x3_1 - ( h / Capacitance) * (y3_1 + (x3_1 - x2_1) / R )
-    y3_2, _ = f3.oracle(x3_2)
+    y3_2, f3_2 = f3.oracle(x3_2)
 
     E_1 = (Capacitance/2) * ((x1_1 - x1_star)**2 + (x2_1 - x2_star)**2 + (x3_1 - x3_star)**2) 
             # + gamma * (((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2))
     E_2 = (Capacitance/2) * ((x1_2 - x1_star)**2 + (x2_2 - x2_star)**2 + (x3_2 - x3_star)**2) 
             # + gamma * (((y1_2 - y1_star)**2 + (y2_2 - y2_star)**2 + (y3_2 - y3_star)**2))
     # Delta_1 = d * (1 / R) * ((x1_1 - x2_1 - (x1_star - x2_star))**2 + (x3_1 - x2_1 - (x3_star - x2_star))**2) + \
-    #           b * ((x1_1 - x1_star) * (y1_1 - y1_star) + (x2_1 - x2_star) * (y2_1 - y2_star) + (x3_1 - x3_star) * (y3_1 - y3_star))
-    Delta_2 = d * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
-              b * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) + (x3_2 - x3_star) * (y3_2 - y3_star))
+    #           b * ((x1_1 - x1_star) * (y1_1 - y1_star) + (x2_1 - x2_star) * (y2_1 - y2_star) 
+    #                 + (x3_1 - x3_star) * (y3_1 - y3_star))
+    # Delta_2 = d * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
+    #           b * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) 
+    #                + (x3_2 - x3_star) * (y3_2 - y3_star))
+    Delta_2 = b * ((f1_2 + f2_2 + f3_2) - (f1_star + f2_star + f3_star)) \
+                + b * (x1_2 * (x1_2 - x2_2) + x2_2 * (2 * x2_2 - x1_2 - x3_2) + x3_2 * (x3_2 - x2_2)) \
+                - b * (x1_star * (x1_star - x2_star) + x2_star * (2 * x2_star - x1_star - x3_star) \
+                       + x3_star * (x3_star - x2_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
 

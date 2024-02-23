@@ -97,7 +97,13 @@ def solve_ca_canonical_X(self, verbose=True, init_values=None, bounds=None, debu
     ca_vars = {name : var_x[idx] for name, idx in name2idx.items()}
     opti.minimize( -sympy_expression_to_casadi(self.obj, ca_vars, opti))
     opti.solver('ipopt', opts)
-    sol = opti.solve() # QCQP for solving CircuitOpt
+    try:
+        sol = opti.solve() # QCQP for solving CircuitOpt
+    except:
+        if debug:
+            self.ca_vars = ca_vars
+        print("Could not find a solution using Ipopt")
+        return None, ca_vars, None, sp_exp
     assert sol.stats()['success'], print(sol.stats())
     self.opti = opti
     self.name2idx = name2idx
