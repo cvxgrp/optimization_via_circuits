@@ -12,8 +12,11 @@ from ciropt.sympy_parsing import *
 from ciropt.sympy_to_solvers import *
 
 
-def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, debug=False, **kwargs):
-    # formulate problem explicitly as QCQP using x and matrix X
+def solve_ipopt_qcqp_matrix(self, verbose=True, init_values=None, bounds=None, debug=False, **kwargs):
+    """
+    Use ipopt to find proofs and formulate problem explicitly as QCQP using matrix X:
+        with variables x = [vec(v), vec(lamb), vec(nu), vec(P)], and X = xx^T 
+    """
     dim_G = Point.counter
     dim_F = Expression.counter 
     print(f"{dim_G=}, {dim_F=}")
@@ -21,12 +24,12 @@ def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, d
                                 if function.get_is_leaf()]
 
     discretization_params = self.discretization_params
-    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+    sp_exp, total_I_size, total_eq_size  = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
     v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
 
     v_size = len(v_names)
-    x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
+    x_size = len(v_names) + total_I_size + total_eq_size +  dim_G * (dim_G + 1) // 2
     opti = ca.Opti()
     var_x1 = opti.variable(x_size + 100, 1)
     var_x = var_x1[:x_size]
@@ -35,28 +38,34 @@ def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, d
     ca_vars = {"x": var_x}
     assert v_k_list[-1] == "FG_d", print(v_k_list)
 
+    print(f"Ipopt total # of variables = {np.prod(var_x1.size())}")
+    print(f"Actual # of variables = {x_size}")
+
     vec_indices = { "v"   : [0, v_size - 1],
                     "lamb": [v_size, v_size + total_I_size - 1 ], 
-                    "P"  : [v_size + total_I_size, x_size - 1]} 
-
-    I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
-    I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
+                    "nu": [v_size + total_I_size, v_size + total_I_size + total_eq_size - 1 ], \
+                    "P"  : [v_size + total_I_size + total_eq_size, x_size - 1]} 
 
     init_ca_ipopt(init_values, opti, vec_indices, var_x)
+
+    # selection matrices for variables v, lamb, nu, P
+    I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
+    I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
+    vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
+    I_lambs_nus = get_vec_var(var_x, "lamb_nu", vec_indices, matrix=True)
 
     # matrix coefficient for variable F is 0
     obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
     sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
-    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    assert sum_ij_F.shape == (I_lambs_nus.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs_nus.shape[0], dim_F, v_size))
     for k in range(dim_F):
-        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0])
-        opti.subject_to(  obj_F[k : k+1, :] @ I_v @ var_x - ca.trace(I_lambs.T @ sum_ij_F[:, k, :] @ I_v @ var_X) == 0)
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs_nus.shape[0], I_v.shape[0])
+        opti.subject_to(  obj_F[k : k+1, :] @ I_v @ var_x - ca.trace(I_lambs_nus.T @ sum_ij_F[:, k, :] @ I_v @ var_X) == 0)
 
     # matrix coefficient for variable G is 0
     obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
     sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    assert sum_ij_G.shape == (I_lambs_nus.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs_nus.shape[0], dim_G*dim_G, v_size))
     for k1 in range(dim_G):
         for k2 in range(dim_G):
             k_idx = k1 * dim_G + k2
@@ -64,7 +73,7 @@ def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, d
             S1, S2 = get_PPt_matrix(var_x, vec_indices, k1, k2)
             opti.subject_to(  obj_G[k_idx : k_idx+1, :] @ I_v @ var_x \
                             + ca.trace(S1.T @ S2 @ var_X)\
-                            - ca.trace(I_lambs.T @ sum_ij_G[:, k_idx, :] @ I_v @ var_X) == 0)
+                            - ca.trace(((I_lambs_nus.T @ sum_ij_G[:, k_idx, :]) @ I_v) @ var_X) == 0)
 
     # v variables quadratic constraints
     # v^T Qi v + ai^T v = 0 
@@ -76,12 +85,13 @@ def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, d
         ai = - one_hot(v_size, name2idx[name])
         # include both permutations for the product 
         Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
-        opti.subject_to( ca.trace(I_v.T @ Qi @ I_v @ var_X)+ ai.T @ I_v @ var_x == 0)
+        opti.subject_to( ca.trace(((I_v.T @ Qi) @ I_v) @ var_X)+ ai.T @ I_v @ var_x == 0)
 
     # bounds
     ca_add_bounds(opti, bounds, ca_vars, name2idx)
 
     # lambda >= 0 constraints
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
     opti.subject_to( I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1)))
     # diag(P) >= 0 constraints
     vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
@@ -113,6 +123,9 @@ def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, d
 
 
 def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
+    """
+    Use gurobipy branch-and-bound to solve a QCQP
+    """
     try:
         import gurobipy as gp
     except ImportError:
@@ -145,21 +158,36 @@ def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0
 
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
-    sp_exp, total_I_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
-    for f_idx in range(len(list_of_leaf_functions)):
-        name = "lamb%d"%(f_idx)
-        gp_vars[name] = model.addMVar((dim_F, dim_F), name=name, lb=0, ub=1000)
+    sp_exp, total_I_size, total_eq_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
+    shift_f_idx = 0; ineq_size = 0; eq_size = 0
+    if self.list_of_constraints != list():
+        eq_size = total_eq_size
+        ineq_size = len(self.list_of_constraints) - total_eq_size
+        if ineq_size >= 1:
+            shift_f_idx = 1
+            name = "lamb0"
+            gp_vars[name] = model.addMVar((ineq_size, 1), name=name, lb=0, ub=1000)
+            model.update()
+        if eq_size >= 1:
+            name = "nu0"
+            gp_vars[name] = model.addMVar((eq_size, 1), name=name, lb=-1000, ub=1000)
+            model.update()
+
+    for f_idx, function in enumerate(list_of_leaf_functions):
+        name = "lamb%d"%(f_idx + shift_f_idx)
+        size_I_function = len(function.list_of_points)
+        gp_vars[name] = model.addMVar((size_I_function, size_I_function), name=name, lb=0, ub=1000)
         model.update()
         if bounds is not None and name in bounds:
             if "ub" in bounds[name]:
                 model.addConstr( gp_vars[name] <= bounds[name]["ub"] )
             if "lb" in bounds[name]:
                 model.addConstr( gp_vars[name] >= bounds[name]["lb"] )
-        model.addConstr( gp_vars[name].diagonal() == np.zeros(dim_F) )
+        # model.addConstr( gp_vars[name].diagonal() == np.zeros(size_I_function) )
 
     assert sum_ij_La.shape == sp_exp["FG_d"]["F"].shape and sum_ij_AC.shape == sp_exp["FG_d"]["G"].shape
     sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_d"]["F"])
-    sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) # sum_ij_AC - P @ P.T - Gweights_d
+    sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) 
     z1 = sympy_matrix_to_gurobi(sp_z1, gp_vars, model)
     z2 = sympy_matrix_to_gurobi(sp_z2, gp_vars, model)
     PPt = gp_vars["P"] @ gp_vars["P"].T
@@ -195,7 +223,10 @@ def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0
     return dict_parameters_ciropt_gp(model, gp_vars), model, sp_exp
 
 
-def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
+def solve_gp_qcqp_matrix(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
+    """
+    Use gurobipy branch-and-bound to solve a QCQP in matrix form
+    """
     try:
         import gurobipy as gp
     except ImportError:
@@ -208,12 +239,12 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
                                 if function.get_is_leaf()]
 
     discretization_params = self.discretization_params
-    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+    sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
     v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
 
     v_size = len(v_names)
-    x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
+    x_size = len(v_names) + total_I_size + total_eq_size + dim_G * (dim_G + 1) // 2
     model = gp.Model() 
     var_x = model.addMVar((x_size, 1), name="x", lb=-1000, ub=1000)
     model.update()
@@ -236,29 +267,31 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
 
     vec_indices = { "v"   : [0, v_size - 1],\
                     "lamb": [v_size, v_size + total_I_size - 1 ], \
-                    "P"  : [v_size + total_I_size, x_size - 1]} 
+                    "nu": [v_size + total_I_size, v_size + total_I_size + total_eq_size - 1 ], \
+                    "P"  : [v_size + total_I_size + total_eq_size, x_size - 1]} 
 
     # x = [v, vec(lambda), vec(P)]
     I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
+    I_lamb_nu = get_vec_var(var_x, "lamb_nu", vec_indices, matrix=True)
     I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
 
     # matrix coefficient for variable F is 0
     obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
     sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
-    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    assert sum_ij_F.shape == (I_lamb_nu.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lamb_nu.shape[0], dim_F, v_size))
 
     for k in range(dim_F):
-        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0])
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lamb_nu.shape[0], I_v.shape[0])
         M1 = obj_F[k : k+1, :] @ I_v
-        M2 = I_lambs.T @ sum_ij_F[:, k, :] @ I_v
+        M2 = I_lamb_nu.T @ sum_ij_F[:, k, :] @ I_v
         print(type(M1), type(var_X), type(M2))
         model.addConstr(  (M1 @ var_x).item()  - gp_trace(M2 @ var_X) == 0)
 
     # matrix coefficient for variable G is 0
     obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
     sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    assert sum_ij_G.shape == (I_lamb_nu.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lamb_nu.shape[0], dim_G*dim_G, v_size))
     for k1 in range(dim_G):
         for k2 in range(dim_G):
             k_idx = k1 * dim_G + k2
@@ -266,7 +299,7 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
             S1, S2 = get_PPt_matrix(var_x, vec_indices, k1, k2)
             M1 = obj_G[k_idx : k_idx+1, :] @ I_v
             M2 = S1.T @ S2
-            M3 = I_lambs.T @ sum_ij_G[:, k_idx, :] @ I_v
+            M3 = I_lamb_nu.T @ sum_ij_G[:, k_idx, :] @ I_v
             model.addConstr(  (M1 @ var_x).item()  \
                             + gp_trace(M2 @ var_X) \
                             - gp_trace(M3 @ var_X) == 0)
@@ -286,6 +319,7 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
         # model.addConstr( gp_trace((I_v.T @ Qi2 @ I_v) @ var_X) + ((ai.T @ I_v) @ var_x).item() == 0)
 
     # lambda >= 0 constraints
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
     model.addConstr( I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1)))
     # diag(P) >= 0 constraints
     vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
@@ -333,11 +367,11 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
     
     discretization_params = self.discretization_params
 
-    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+    sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
     v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
-    x_size = len(v_names) + total_I_size + dim_G * (dim_G + 1) // 2
+    x_size = len(v_names) + total_I_size + total_eq_size + dim_G * (dim_G + 1) // 2
     P_size = dim_G * (dim_G + 1) // 2
     
     # sni variables
@@ -360,11 +394,13 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
 
     vec_indices = { "v"   : [0, v_size - 1],\
                     "lamb": [v_size, v_size + total_I_size - 1 ],
-                    "P"  : [v_size + total_I_size, x_size - 1]} 
+                    "nu": [v_size + total_I_size, v_size + total_I_size + total_eq_size - 1 ], \
+                    "P"  : [v_size + total_I_size + total_eq_size, x_size - 1]} 
 
     # x = [v, vec(lambda), vec(P)]
     I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
+    I_lamb_nu = get_vec_var(var_x, "lamb_nu", vec_indices, matrix=True)
     I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
     # bounds
     # constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
@@ -374,9 +410,9 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
     obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
     # |lambs| x |F| x |v|
     sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size) 
-    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    assert sum_ij_F.shape == (I_lamb_nu.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lamb_nu.shape[0], dim_F, v_size))
     for k in range(dim_F):
-        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0]) 
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lamb_nu.shape[0], I_v.shape[0]) 
         block_Q_F = 0.5 * sum_ij_F[:, k, :]
         Q_F = scipy.sparse.bmat([[None, block_Q_F.T, None], 
                                  [block_Q_F, None, None], 
@@ -390,7 +426,7 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
     obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
     # |lambs| x |G| x |v|
     sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    assert sum_ij_G.shape == (I_lamb_nu.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lamb_nu.shape[0], dim_G*dim_G, v_size))
     for k1 in range(dim_G):
         for k2 in range(dim_G):
             k_idx = k1 * dim_G + k2
@@ -415,6 +451,7 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
         sni_fs += [(Qi, ai, 0, "==")] 
 
     # lambda >= 0 constraints
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
     for i in range(I_lambs.shape[0]):
         sni_fs += [(scipy.sparse.csr_matrix((x_size, x_size)), scipy.sparse.csc_matrix(- I_lambs[i:i+1].T), 0, "<=")]
     # diag(P) >= 0 constraints
@@ -470,13 +507,15 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
 
 
 def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kwargs):
+    """
+    Find proof by solving QCQP problem using convex-concave procedure (CCP)
+        using x=[vec(v), vec(lamb)] and Z
+        CCP: every matrix can be decomposed onto a difference of two PSD matrices
+    """
     try:
         import dccp
     except ImportError:
         raise Exception("DCCP package is not installed.")
-    # solve QCQP problem using convex-concave procedure
-    # using x=[vec(v), vec(lamb)] and Z
-    # every matrix can be decomposed onto a difference of two PSD matrices
     dim_G = Point.counter
     dim_F = Expression.counter 
     print(f"{dim_G=}, {dim_F=}")
@@ -485,11 +524,11 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
     
     discretization_params = self.discretization_params
 
-    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+    sp_exp, total_I_size, total_eq_size  = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
     v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
-    x_size = len(v_names) + total_I_size
+    x_size = len(v_names) + total_I_size + total_eq_size 
     
     # variables
     var_x = cp.Variable((x_size, 1))
@@ -512,13 +551,15 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
     assert v_k_list[-1] == "FG_d", print(v_k_list)
 
     vec_indices = { "v"   : [0, v_size - 1],\
-                    "lamb": [v_size, v_size + total_I_size - 1 ]} 
+                    "lamb": [v_size, v_size + total_I_size - 1 ],
+                    "nu": [v_size + total_I_size, v_size + total_I_size + total_eq_size - 1 ]} 
 
     I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
+    I_lamb_nu = get_vec_var(var_x, "lamb_nu", vec_indices, matrix=True)
+    
     # bounds
-    constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
-    constraints += [I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
+    constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lamb_nu)
     var_v = get_vec_var(var_x, "v", vec_indices)
 
     # matrix coefficient for variable F is 0
@@ -526,12 +567,12 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
     obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
     # |lambs| x |F| x |v|
     sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size) 
-    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    assert sum_ij_F.shape == (I_lamb_nu.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lamb_nu.shape[0], dim_F, v_size))
     for k in range(dim_F):
-        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0]) 
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lamb_nu.shape[0], I_v.shape[0]) 
         block_Q_F = 0.5 * sum_ij_F[:, k, :]
         Q_F = np.block([[np.zeros((v_size, v_size)), block_Q_F.T], 
-                        [block_Q_F, np.zeros((total_I_size, total_I_size))]])
+                        [block_Q_F, np.zeros((total_I_size + total_eq_size, total_I_size + total_eq_size))]])
         q_F = obj_F[k : k+1, :]
         Q_F_plus, Q_F_minus = matrix_to_diff_psd(Q_F)
         if type(Q_F_plus) == int:
@@ -547,13 +588,13 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
     obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
     # |lambs| x |G| x |v|
     sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    assert sum_ij_G.shape == (I_lamb_nu.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lamb_nu.shape[0], dim_G*dim_G, v_size))
     for k1 in range(dim_G):
         for k2 in range(dim_G):
             k_idx = k1 * dim_G + k2
             block_Q_G = 0.5 * sum_ij_G[:, k_idx, :]
             Q_G = np.block([[np.zeros((v_size, v_size)), block_Q_G.T], 
-                            [block_Q_G, np.zeros((total_I_size, total_I_size))]])
+                            [block_Q_G, np.zeros((total_I_size + total_eq_size, total_I_size + total_eq_size))]])
             q_G = obj_G[k_idx : k_idx+1, :]
             Q_G_plus, Q_G_minus = matrix_to_diff_psd(Q_G)
             if type(Q_G_plus) == int:
@@ -583,6 +624,7 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
             constraints += [ cp.quad_form(var_x_ij, Qi_plus) == cp.quad_form(var_x_ij, Qi_minus) + var_x[name2idx[name]] ]
 
     # lambda >= 0 constraints
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
     constraints += [ I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
 
     obj = -sympy_expression_to_cvx(self.obj, var_x, name2idx)
@@ -601,9 +643,11 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
 
 
 def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None, cvx_solver=cp.CLARABEL, **kwargs):
-    # formulate problem explicitly as QCQP using x and matrix X and Z
-    # keep Z=PP^T as it is, not aggregate into x = vec(p, lambda)
-    # and relax it to convex SDP relaxation or to get bounds on the variables
+    """
+    Formulate problem explicitly as QCQP using x and matrices X and Z
+        keep Z=PP^T as it is, not aggregate into x = vec(p, lambda)
+        and relax it to convex SDP relaxation or to get bounds on the variables
+    """
     dim_G = Point.counter
     dim_F = Expression.counter 
     print(f"{dim_G=}, {dim_F=}")
@@ -613,11 +657,11 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
     discretization_params = self.discretization_params
     bounds_names = sorted(['alpha', 'beta', 'Z', "lamb"])
 
-    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+    sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
     v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
-    x_size = len(v_names) + total_I_size
+    x_size = len(v_names) + total_I_size + total_eq_size
     
     # bounds
     if var_bound is not None:
@@ -661,21 +705,23 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
     assert v_k_list[-1] == "FG_d", print(v_k_list)
 
     vec_indices = { "v"   : [0, v_size - 1],\
-                    "lamb": [v_size, v_size + total_I_size - 1 ]} 
+                    "lamb": [v_size, v_size + total_I_size - 1 ],
+                    "nu": [v_size + total_I_size, v_size + total_I_size + total_eq_size - 1 ]} 
 
     I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
+    I_lamb_nu = get_vec_var(var_x, "lamb_nu", vec_indices, matrix=True)
 
-    constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
+    constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lamb_nu)
 
     # matrix coefficient for variable F is 0
     # |F| x |v|
     obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
     # |lambs| x |F| x |v|
     sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
-    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    assert sum_ij_F.shape == (I_lamb_nu.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lamb_nu.shape[0], dim_F, v_size))
     for k in range(dim_F):
-        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0])
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lamb_nu.shape[0], I_v.shape[0])
         block_Q_F = 0.5 * sum_ij_F[:, k, :]
         Q_F = scipy.sparse.bmat([[None, block_Q_F.T], 
                                  [block_Q_F, None,]]).tocsr()
@@ -687,7 +733,7 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
     obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
     # |lambs| x |G| x |v|
     sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    assert sum_ij_G.shape == (I_lamb_nu.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lamb_nu.shape[0], dim_G*dim_G, v_size))
     for k1 in range(dim_G):
         for k2 in range(dim_G):
             k_idx = k1 * dim_G + k2
@@ -709,6 +755,7 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
         constraints += [ cp.trace( Qi  @ var_X) + cp.sum(ai.T @ var_x) == 0 ]
 
     # lambda >= 0 constraints
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
     constraints += [ I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
 
     if var_bound is not None:
@@ -724,7 +771,7 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
                 constraints += [cp.abs(var_x[name2idx[name], 0]) <= bounds_vars[b_idx]]
 
         constraints += [ bounds_vars[bnames2idx["Z"]] <= cp.trace(var_Z), \
-                         bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.999),
+                         bounds_vars[bnames2idx["lamb_nu"]] <= cp.pnorm(I_lamb_nu @ var_x, 0.999),
                          bounds_vars[bnames2idx["alpha"]] == var_x[name2idx["alpha"]],
                          bounds_vars[bnames2idx["beta"]] == var_x[name2idx["beta"]],   ]
 
@@ -749,9 +796,11 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
     
 
 def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False, bounds=None, **kwargs):
-    # formulate problem explicitly as QCQP using x and matrix X
-    # variable x = vec(v, lambda, P), aggregating Z=PP^T
-    # and relax it to convex SDP to get bounds on the variables
+    """
+    Formulate problem explicitly as QCQP using x and matrix X
+    variable x = vec(v, lambda, P), aggregating Z=PP^T
+    and relax it to convex SDP to get bounds on the variables
+    """
     dim_G = Point.counter
     dim_F = Expression.counter 
     print(f"{dim_G=}, {dim_F=}")
@@ -760,13 +809,14 @@ def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False
     
     discretization_params = self.discretization_params
     # bounds_names = sorted(['alpha', 'beta', 'h', 'b', 'd', 'P', "lamb"])
-    bounds_names = sorted(['P', "lamb"])
+    bounds_names = sorted(['P', "lamb", "nu"])
 
-    sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+    sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
+
 
     v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
-    x_size = len(v_names) + total_I_size + dim_G * (dim_G + 1) // 2
+    x_size = len(v_names) + total_I_size + total_eq_size + dim_G * (dim_G + 1) // 2
     P_size = dim_G * (dim_G + 1) // 2
     
     # bounds
@@ -800,22 +850,25 @@ def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False
 
     vec_indices = { "v"   : [0, v_size - 1],\
                     "lamb": [v_size, v_size + total_I_size - 1 ], \
-                    "P"  : [v_size + total_I_size, x_size - 1]} 
+                    "nu": [v_size + total_I_size, v_size + total_I_size + total_eq_size - 1 ], \
+                    "P"  : [v_size + total_I_size + total_eq_size, x_size - 1]} 
 
     I_v = get_vec_var(var_x, "v", vec_indices, matrix=True)
-    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    # I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
+    vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
+    I_lamb_nu = get_vec_var(var_x, "lamb_nu", vec_indices, matrix=True)
     I_P = get_vec_var(var_x, "P", vec_indices, matrix=True)
 
-    constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lambs)
+    constraints = cvx_add_bounds(constraints, bounds, cvx_vars, name2idx, var_x, I_lamb_nu)
 
     # matrix coefficient for variable F is 0
     # |F| x |v|
     obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
     # |lambs| x |F| x |v|
     sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
-    assert sum_ij_F.shape == (I_lambs.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lambs.shape[0], dim_F, v_size))
+    assert sum_ij_F.shape == (I_lamb_nu.shape[0], dim_F, v_size), print(sum_ij_F.shape, (I_lamb_nu.shape[0], dim_F, v_size))
     for k in range(dim_F):
-        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lambs.shape[0], I_v.shape[0])
+        assert obj_F[k : k+1, :].shape[1] == I_v.shape[0] and sum_ij_F[:, k, :].shape == (I_lamb_nu.shape[0], I_v.shape[0])
         block_Q_F = 0.5 * sum_ij_F[:, k, :]
         Q_F = scipy.sparse.bmat([[None, block_Q_F.T, None], 
                                     [block_Q_F, None, None], 
@@ -826,7 +879,7 @@ def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False
     # matrix coefficient for variable G is 0
     obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
     sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-    assert sum_ij_G.shape == (I_lambs.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs.shape[0], dim_G*dim_G, v_size))
+    assert sum_ij_G.shape == (I_lamb_nu.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lamb_nu.shape[0], dim_G*dim_G, v_size))
     for k1 in range(dim_G):
         for k2 in range(dim_G):
             k_idx = k1 * dim_G + k2
@@ -852,6 +905,7 @@ def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False
         constraints += [ cp.trace( Qi @ var_X) + cp.sum(ai.T @ var_x) == 0 ]
 
     # lambda >= 0 constraints
+    I_lambs = get_vec_var(var_x, "lamb", vec_indices, matrix=True)
     constraints += [ I_lambs @ var_x >= np.zeros((I_lambs.shape[0], 1))]
     # diag(P) >= 0 constraints
     vec_diag_P_idx = (np.cumsum(np.arange(dim_G + 1))[1:] - 1).reshape(-1, 1)
@@ -868,7 +922,7 @@ def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False
             constraints += [cp.abs(var_x[name2idx[name], 0]) <= bounds_vars[b_idx]]
 
     constraints += [cp.square(bounds_vars[bnames2idx["P"]]) <= cp.trace(I_P @ var_X @ I_P.T), \
-                    bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lambs @ var_x, 0.999)]
+                    bounds_vars[bnames2idx["lamb"]] <= cp.pnorm(I_lamb_nu @ var_x, 0.999)]
     assert (I_P @ var_X @ I_P.T).shape[0] == dim_G * (dim_G + 1) // 2
 
     obj = - cp.sum(bounds_vars)

@@ -102,9 +102,10 @@ class CircuitOpt(object):
             if type(key) == Expression: # Function values are stored in F
                 assert key.get_is_leaf()
                 Fweights[key.counter] += sp_weight
-            elif type(key) == tuple: # Inner products are stored in G
+            elif type(key) == tuple: # Inner products between points are stored in G
                 point1, point2 = key
                 assert point1.get_is_leaf() and point2.get_is_leaf()
+                # symmetric matrix
                 Gweights[point1.counter, point2.counter] += sp_weight/2
                 Gweights[point2.counter, point1.counter] += sp_weight/2
         return Fweights, Gweights
@@ -146,13 +147,13 @@ class CircuitOpt(object):
                     prefix_name = "lamb0"
                     total_I_size += 1
                     sp_exp_ineq[(0, 0, ineq_idx, 0)] = {"F" : Fweights_ij, "G" : Gweights_ij}
-                    lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(0, ineq_idx))
+                    lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(ineq_idx, 0))
                     ineq_idx += 1
                 elif expr.equality_or_inequality == "equality":
                     prefix_name = "nu0"
                     total_eq_size += 1
                     sp_exp_eq[(1, 0, eq_idx, 0)] = {"F" : Fweights_ij, "G" : Gweights_ij}
-                    lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(0, ineq_idx))
+                    lamb_ij = sp.symbols(prefix_name + "|%d.%d|"%(eq_idx, 0))
                     eq_idx += 1
                 sum_ij_La += lamb_ij * Fweights_ij
                 sum_ij_AC += lamb_ij * Gweights_ij
@@ -184,8 +185,6 @@ class CircuitOpt(object):
         Fweights_d, Gweights_d = self._expression_to_matrix(self.perf_metric, dim_G, dim_F) 
         sp_exp["FG_d"] = {"F" : Fweights_d, "G" : Gweights_d}
         assert sum_ij_La.shape == Fweights_d.shape and sum_ij_AC.shape == Gweights_d.shape
-        print(f"{sp_exp.keys()=}")
-        print(f"{sp_exp_eq.keys()=}")
         return sp_exp, total_I_size, total_eq_size, sum_ij_La, sum_ij_AC
         
     
@@ -217,8 +216,8 @@ class CircuitOpt(object):
         sp_exp, total_I_size, total_eq_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
         shift_f_idx = 0; ineq_size = 0; eq_size = 0
         if self.list_of_constraints != list():
-            ineq_size = sum([1 if expr.equality_or_inequality == "inequality" else 0 for expr in self.list_of_constraints])
-            eq_size = len(self.list_of_constraints) - ineq_size
+            eq_size = total_eq_size
+            ineq_size = len(self.list_of_constraints) - total_eq_size
             if ineq_size >= 1:
                 shift_f_idx = 1
                 lamb = opti.variable(ineq_size, 1)
@@ -230,11 +229,10 @@ class CircuitOpt(object):
 
         for f_idx, function in enumerate(list_of_leaf_functions):
             size_I_function = len(function.list_of_points)
-            print(f"{f_idx=}, {size_I_function=}")
             lamb = opti.variable(size_I_function, size_I_function)
             ca_vars["lamb%d"%(f_idx + shift_f_idx)] = lamb
             opti.subject_to( ca.reshape(lamb, (-1, 1)) >= np.zeros((size_I_function * size_I_function, 1)) )
-        print(f"{ca_vars.keys()=} \n{shift_f_idx=} \n{eq_size=} \n{ineq_size=}")
+        
         sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_d"]["F"])
         sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) # sum_ij_AC - P @ P.T - Gweights_d
         z1 = sympy_matrix_to_casadi(sp_z1, ca_vars, opti)
@@ -252,6 +250,10 @@ class CircuitOpt(object):
         opti.minimize( - sympy_expression_to_casadi(self.obj, ca_vars, opti))
         opti.solver('ipopt', opts)
         self.vars = ca_vars
+
+        print(f"Ipopt total # of variables = {ca_dict_total_variable_size(ca_vars)}")
+        print(f"Actual # of variables = {total_I_size + total_eq_size + dim_F + dim_G*(dim_G+1)//2 + len(self.discretization_params)}")
+
         try:
             sol = opti.solve() # QCQP for solving CircuitOpt
         except:
@@ -273,11 +275,12 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
   
-    def solve_ipopt_canonical(self, verbose=True, init_values=None, x0=None, bounds=None, debug=False, **kwargs):
+    def solve_ipopt_qcqp(self, verbose=True, init_values=None, x0=None, bounds=None, debug=False, **kwargs):
         """
-        Formulate problem explicitly as QCQP with matrices: 
+        Use ipopt to find proofs and formulate problem explicitly as QCQP: 
             introduce the dummy variables for the discretization parameters
-            to make each expression bilinear in discretization parameters and entries of G and F
+            to make each expression bilinear in discretization parameters and entries of G and F,
+            with variables vec(v), vec(lamb), vec(nu), and vec(P)
         """
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -297,6 +300,9 @@ class CircuitOpt(object):
         var_x = var_x2[:x_size]
         opti.subject_to(var_x[0] == 1)
         ca_vars = {"x": var_x}
+
+        print(f"Ipopt total # of variables = {np.prod(var_x2.size())}")
+        print(f"Actual # of variables = {x_size}")
 
         ca_add_bounds(opti, bounds, ca_vars, name2idx)
         assert v_k_list[-1] == "FG_d", print(v_k_list)
@@ -381,11 +387,11 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
 
-    solve_ipopt_canonical_X = solve_ipopt_canonical_X
+    solve_ipopt_qcqp_matrix = solve_ipopt_qcqp_matrix
 
     solve_gp = solve_gp
 
-    solve_gp_canonical_X = solve_gp_canonical_X
+    solve_gp_qcqp_matrix = solve_gp_qcqp_matrix
 
     solve_qcqp_sni = solve_qcqp_sni
 
@@ -406,9 +412,9 @@ class CircuitOpt(object):
                                 if function.get_is_leaf()]
         discretization_params = self.discretization_params
         assert sorted(list(params.keys())) == discretization_params
-        sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+        sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
         v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
-        inputs = (v_coeffs, v_names, v_k_list, name2idx, total_I_size, sp_exp)
+        inputs = (v_coeffs, v_names, v_k_list, name2idx, total_I_size, total_eq_size, sp_exp)
 
         b = params["b"] if "b" in params else 10.
         for t in range(max_iters):
@@ -433,35 +439,36 @@ class CircuitOpt(object):
                                     if function.get_is_leaf()]
             discretization_params = self.discretization_params
             assert sorted(list(params.keys())) == discretization_params
-            sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
+            sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
             v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
             if debug:   assert set(list(name2idx.keys())) == set(v_names)
             lambda_size = total_I_size
+            nu_size = total_eq_size
         else:
-            v_coeffs, v_names, v_k_list, name2idx, lambda_size, sp_exp = inputs
+            v_coeffs, v_names, v_k_list, name2idx, lambda_size, nu_size, sp_exp = inputs
         
         v_value = vars_to_vector(v_names, params)
         v_size = len(v_names)
         
         # SDP variables
-        var_lambda = cp.Variable((lambda_size, 1), nonneg=True)
+        var_lambda_nu = cp.Variable((lambda_size + nu_size, 1))
         Z = cp.Variable((dim_G, dim_G), PSD=True)
-        constraints = [ ]
+        constraints = [ var_lambda_nu[:lambda_size] >= 0]
         assert v_k_list[-1] == "FG_d", print(v_k_list)
 
         # matrix coefficient for variable F is 0
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
         sum_ij_F = stack_vectors(v_coeffs["F"][:-1], v_size)
-        assert sum_ij_F.shape == (lambda_size, dim_F, v_size)
-        constraints += [ cp.vec(obj_F @ v_value, order="C") == cp.vec(var_lambda.T @ (sum_ij_F @ v_value).squeeze(), order="C")]
+        assert sum_ij_F.shape == (lambda_size + nu_size, dim_F, v_size)
+        constraints += [ cp.vec(obj_F @ v_value, order="C") == cp.vec(var_lambda_nu.T @ (sum_ij_F @ v_value).squeeze(), order="C")]
 
         # matrix coefficient for variable G is 0
         obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
         sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-        assert sum_ij_G.shape == (lambda_size, dim_G*dim_G, v_size)
+        assert sum_ij_G.shape == (lambda_size + nu_size, dim_G*dim_G, v_size)
         vec_Z = cp.vec(Z, order="C")
-        constraints += [cp.vec(obj_G @ v_value, order="C") + vec_Z == cp.vec(var_lambda.T @ (sum_ij_G @ v_value).squeeze(), order="C") ]
+        constraints += [cp.vec(obj_G @ v_value, order="C") + vec_Z == cp.vec(var_lambda_nu.T @ (sum_ij_G @ v_value).squeeze(), order="C") ]
 
         prob = cp.Problem(cp.Minimize(0), constraints)
         # 'SCS', 'CVXOPT','SDPA', cp.CLARABEL, cp.MOSEK
@@ -473,7 +480,7 @@ class CircuitOpt(object):
         self.prob = prob
         self.name2idx = name2idx
         self.v_names = v_names
-        self.vars = {"Z" : Z.value, "lambdas" : var_lambda.value}
+        self.vars = {"Z" : Z.value, "lambdas_nus" : var_lambda_nu.value}
         self.vars.update(params)
         return self.vars, prob, sp_exp
    
@@ -481,18 +488,18 @@ class CircuitOpt(object):
     def solve(self, solver="ipopt", **kwargs):
         if solver == "gp":
             return self.solve_gp(**kwargs)
-        elif solver == "gp_canonical_X":
-            return self.solve_gp_canonical_X(**kwargs)
+        elif solver == "gp_qcqp_matrix":
+            return self.solve_gp_qcqp_matrix(**kwargs)
         elif solver == "sdp_relax":
             return self.solve_sdp_relax(**kwargs)
         elif solver == "bounds_sdp_relax_all":
             return self.bounds_sdp_relax_all(**kwargs)
         elif solver == "ipopt":
             return self.solve_ipopt(**kwargs)
-        elif solver == "ipopt_canonical":
-            return self.solve_ipopt_canonical(**kwargs)
-        elif solver == "ipopt_canonical_X":
-            return self.solve_ipopt_canonical_X(**kwargs)
+        elif solver == "ipopt_qcqp":
+            return self.solve_ipopt_qcqp(**kwargs)
+        elif solver == "ipopt_qcqp_matrix":
+            return self.solve_ipopt_qcqp_matrix(**kwargs)
         elif solver == "fix_discr_sdp":
             return self.solve_fix_discr_sdp(**kwargs)
         elif solver == "dccp":

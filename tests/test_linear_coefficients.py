@@ -14,11 +14,11 @@ def main():
     L_smooth = 1.
     mu = 0.0001
     Capacitance = 2.
-    Inductance = 2.
+    Inductance = 1.
     R = 1.
 
-    solver = "ipopt_canonical"
-    # solver = "ipopt_canonical_X"
+    # solver = "ipopt_qcqp"
+    solver = "ipopt_qcqp_matrix"
     problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
     problem.obj = problem.b + problem.d
     res, sol, sp_exp = problem.solve(solver=solver, verbose=False, debug=True)[:3]
@@ -28,7 +28,7 @@ def main():
 
     for k in sp_exp.keys():
         for mat_expr in sp_exp[k].values():
-            coeff_matrix = co.linear_matrix_expr_to_coeff_matrix(mat_expr, name2idx)
+            coeff_matrix = co.linear_matrix_expr_to_coeff_matrix(co.simplify_matrix(mat_expr), name2idx)
             assert co.equal_sp_arrays(co.coeff_matrix_to_linear_matrix_expr(coeff_matrix, \
                                                                     sp_v, mat_expr.shape), mat_expr)
         

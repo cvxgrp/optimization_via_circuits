@@ -49,8 +49,8 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
 
     E_1 = (Capacitance/2) * (x_1 - x_star)**2
     E_2 = (Capacitance/2) * (x_2 - x_star)**2
-    # Delta_1 = b * (f_1 - f_star)
-    Delta_1 = b * (x_1 - x_star) * (y_1 - y_star)
+    Delta_1 = b * (f_1 - f_star)
+    # Delta_1 = b * (x_1 - x_star) * (y_1 - y_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -527,7 +527,8 @@ def admm_euler_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         i_Ls_2[i] = i_Ls_1[i] + (h / Inductance) * (e_1 - triplets_1[i][0])
     sum_xi_1 = sum_xi_1 / n_func
     problem.add_constraint(Constraint( (e_1 - sum_xi_1) ** 2, "equality"))
-    problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "inequality"))
+    # problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "inequality"))
+    # problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "equality"))
 
     E_1 = 0; E_2 = 0
     Delta_1 = - b * f_star

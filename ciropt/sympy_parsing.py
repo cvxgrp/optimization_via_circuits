@@ -105,7 +105,9 @@ def sp_v_coeff_matrix(sp_exp, discretization_params):
 
 
 def linear_matrix_expr_to_coeff_matrix(mat_expr, name2idx):
-    # elements of mat_expr must be linear in sp_v = name2idx.keys()
+    """
+    Elements of mat_expr must be linear in sp_v = name2idx.keys()
+    """
     coeff_matrix = np.zeros((mat_expr.size, len(name2idx)))
 
     for expr_idx, expr in enumerate(mat_expr.flatten(order='C')):
@@ -119,7 +121,7 @@ def linear_matrix_expr_to_coeff_matrix(mat_expr, name2idx):
         expr_coeffs = polynomial.coeffs()
         for i, monomial in enumerate(polynomial.monoms()):
             variables_in_monomial = []
-            assert sum(monomial) <= 1, print("not linear expression in variables")
+            assert sum(monomial) <= 1, print("not linear expression in variables", expr_idx, expr)
             for var, exp in zip(polynomial.gens, monomial):
                 variables_in_monomial += [var.name] * exp
             if variables_in_monomial != list():

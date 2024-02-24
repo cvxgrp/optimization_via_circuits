@@ -14,7 +14,6 @@ def main():
     Capacitance = 1.
 
     solver = "ipopt"
-    print(f"{co.__file__=}")
 
     # Ciropt formulation
     problem = co.gradient_flow_circuit(0, L_smooth, Capacitance)
@@ -117,9 +116,9 @@ def main():
     F1, G1 = sp_exp["FG_d"]["F"], sp_exp["FG_d"]["G"]
     F2 = sp_vars["b"] * a(1, 0)
     G2 = (Capacitance / 2) * (sp_B(3, 0) - sp_B(1, 0))
-    assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}")
-    assert co.equal_sp_arrays(-F1, F2), print(f"{i=}, {j=} \n{F1=} \n{F2=}\n")
-    print("PASSED equal symbolic expression")
+    assert co.equal_sp_arrays(G1, G2), print(f"{co.simplify_matrix(G1 - G2)=} \n{G1=} \n{G2=}")
+    assert co.equal_sp_arrays(-F1, F2), print(f"{co.simplify_matrix(F1 - F2)=}\n")
+    print("PASSED equal symbolic expressions")
 
     # compare expression evaluations 
     h_init = co_vars["h"]
