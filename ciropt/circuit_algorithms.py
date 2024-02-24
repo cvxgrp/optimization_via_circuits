@@ -526,7 +526,7 @@ def admm_euler_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
     for i in range(n_func): 
         i_Ls_2[i] = i_Ls_1[i] + (h / Inductance) * (e_1 - triplets_1[i][0])
     sum_xi_1 = sum_xi_1 / n_func
-    problem.add_constraint(Constraint( (e_1 - sum_xi_1) ** 2, "inequality"))
+    problem.add_constraint(Constraint( (e_1 - sum_xi_1) ** 2, "equality"))
     problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "inequality"))
 
     E_1 = 0; E_2 = 0
@@ -685,13 +685,13 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
     x2_star_v2, y2_star_v2, f2_star_v2 = proximal_step((x1_star + x3_star)/2, f2, R/2)
     # problem.add_constraint(Constraint( (y1_star + y2_star + y3_star) ** 2, "inequality"))
     # problem.add_constraint(Constraint(-(y1_star + y2_star + y3_star) ** 2, "inequality"))
-    problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2, "inequality"))
-    problem.add_constraint(Constraint(-(x2_star - x2_star_v2) ** 2, "inequality"))
+    problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2, "equality"))
+    # problem.add_constraint(Constraint(-(x2_star - x2_star_v2) ** 2, "inequality"))
     # problem.add_constraint(Constraint( (y2_star - y2_star_v2) ** 2, "inequality"))
     # problem.add_constraint(Constraint(-(y2_star - y2_star_v2) ** 2, "inequality"))
 
     x1_1 = problem.set_initial_point()
-    y1_1, _ = f1.oracle(x1_1)
+    y1_1, _ = f1.oracle(x1_1) 
     x2_1 = problem.set_initial_point()
     y2_1, _ = f2.oracle(x2_1)
     x3_1 = problem.set_initial_point()

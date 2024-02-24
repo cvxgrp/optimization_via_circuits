@@ -12,7 +12,7 @@ from ciropt.sympy_parsing import *
 from ciropt.sympy_to_solvers import *
 
 
-def solve_ca_canonical_X(self, verbose=True, init_values=None, bounds=None, debug=False, **kwargs):
+def solve_ipopt_canonical_X(self, verbose=True, init_values=None, bounds=None, debug=False, **kwargs):
     # formulate problem explicitly as QCQP using x and matrix X
     dim_G = Point.counter
     dim_F = Expression.counter 
@@ -20,10 +20,10 @@ def solve_ca_canonical_X(self, verbose=True, init_values=None, bounds=None, debu
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
 
-    core_vars = self.core_vars
+    discretization_params = self.discretization_params
     sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
 
-    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
 
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
@@ -207,10 +207,10 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
 
-    core_vars = self.core_vars
+    discretization_params = self.discretization_params
     sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
 
-    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
 
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size +  dim_G * (dim_G + 1) // 2
@@ -298,7 +298,7 @@ def solve_gp_canonical_X(self, verbose=True, debug=False, time_limit=1000, ftol=
     if not verbose:
         model.Params.LogToConsole = 0
     model.update()
-    gp_vars = {name : var_x[name2idx[name]].item() for name in core_vars}
+    gp_vars = {name : var_x[name2idx[name]].item() for name in discretization_params}
     model.setObjective( -sympy_expression_to_gurobi(self.obj, gp_vars, model), gp.GRB.MINIMIZE)
     
     model.Params.NonConvex = 2
@@ -331,11 +331,11 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
     
-    core_vars = self.core_vars
+    discretization_params = self.discretization_params
 
     sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
 
-    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size + dim_G * (dim_G + 1) // 2
     P_size = dim_G * (dim_G + 1) // 2
@@ -465,7 +465,7 @@ def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, 
     self.v_names = v_names
     self.var_x = var_x
     self.vars = {"x": var_x.value, "v_names":v_names}
-    vars_vals = {name:var_x[name2idx[name], 0].value for name in core_vars}
+    vars_vals = {name:var_x[name2idx[name], 0].value for name in discretization_params}
     return vars_vals, prob, sp_exp
 
 
@@ -483,11 +483,11 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
     
-    core_vars = self.core_vars
+    discretization_params = self.discretization_params
 
     sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
 
-    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size
     
@@ -596,7 +596,7 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
     self.v_names = v_names
     self.var_x = var_x
     self.vars = {"x": var_x.value, "Z": var_Z.value, "v_names":v_names}
-    vars_vals = {name:var_x[name2idx[name], 0].value for name in core_vars}
+    vars_vals = {name:var_x[name2idx[name], 0].value for name in discretization_params}
     return vars_vals, prob, sp_exp
 
 
@@ -610,12 +610,12 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
     
-    core_vars = self.core_vars
+    discretization_params = self.discretization_params
     bounds_names = sorted(['alpha', 'beta', 'Z', "lamb"])
 
     sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
 
-    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size
     
@@ -744,7 +744,7 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
         res = self.bounds_vars = {name:bounds_vars.value[b_idx] for b_idx, name in enumerate(bounds_names) }
         self.bounds_vars["P"] = np.sqrt(self.bounds_vars["Z"])
     else:
-        res = {name:var_x[name2idx[name], 0].value for name in core_vars}
+        res = {name:var_x[name2idx[name], 0].value for name in discretization_params}
     return res, prob, sp_exp
     
 
@@ -758,13 +758,13 @@ def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False
     list_of_leaf_functions = [function for function in Function.list_of_functions
                                 if function.get_is_leaf()]
     
-    core_vars = self.core_vars
+    discretization_params = self.discretization_params
     # bounds_names = sorted(['alpha', 'beta', 'h', 'b', 'd', 'P', "lamb"])
     bounds_names = sorted(['P', "lamb"])
 
     sp_exp, total_I_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:2]
 
-    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, core_vars)
+    v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
     v_size = len(v_names)
     x_size = len(v_names) + total_I_size + dim_G * (dim_G + 1) // 2
     P_size = dim_G * (dim_G + 1) // 2

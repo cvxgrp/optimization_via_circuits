@@ -13,7 +13,8 @@ def main():
     L_smooth = 1.
     Capacitance = 1.
 
-    solver = "ca"
+    solver = "ipopt"
+    print(f"{co.__file__=}")
 
     # Ciropt formulation
     problem = co.gradient_flow_circuit(0, L_smooth, Capacitance)
@@ -96,7 +97,7 @@ def main():
     opti.subject_to( sum_ij_La - Fweights_d  == np.zeros((dim_F, 1))) 
     opti.subject_to( sum_ij_AC  - P @ P.T - Gweights_d == np.zeros((dim_G, dim_G)))
 
-    opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
+    opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter':50000,}
     opti.solver('ipopt', opts)
     sol = opti.solve()
     assert sol.stats()['success'], print(sol.stats())
@@ -107,7 +108,7 @@ def main():
     for i in range(size_I_function):
         for j in range(size_I_function):
             if i == j: continue
-            F1, G1 = sp_exp[(0,i,j)]["F"], sp_exp[(0,i,j)]["G"]
+            F1, G1 = sp_exp[(0, 0, i, j)]["F"], sp_exp[(0, 0, i, j)]["G"]
             F2 = a(i, j)
             G2 = sp_A(i, j) + (1./(2*L_smooth)) * sp_C(i, j)
             assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}")

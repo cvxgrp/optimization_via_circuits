@@ -35,6 +35,16 @@ def find_lambda(monomial):
     return count, indices
 
 
+def find_nu(monomial):
+    count = 0
+    indices = []
+    for idx, var in enumerate(monomial):
+        if var[:2] == "nu":
+            count += 1
+            indices = idx
+    return count, indices
+
+
 def gurobi_to_numpy(mat):
     M = np.zeros(mat.shape, dtype=object)
     for i in range(M.shape[0]):
@@ -104,15 +114,23 @@ def sympy_expression_to_casadi_lamb(sp_expression, ca_vars, model):
         for var, exp in zip(polynomial.gens, monomial):
             variables_in_monomial += var.name.split("_") * exp
         if variables_in_monomial != list():
-            count, lamb_idx = find_lambda(variables_in_monomial)
-            if count > 0:
-                assert count == 1
+            count_lamb, lamb_idx = find_lambda(variables_in_monomial)
+            count_nu, nu_idx = find_nu(variables_in_monomial)
+            assert count_nu + count_lamb <= 1 # one dual variable per expression/primal constraint
+            if count_lamb > 0:
                 name = variables_in_monomial[lamb_idx]
                 variables_in_monomial.pop(lamb_idx)
                 prefix, ab, _ = name.split("|")
                 a, b = map(int, ab.split("."))
                 lamb_ab = ca_vars[prefix][a, b]
                 gp_monomial = lamb_ab * ca_linearize_monomial(variables_in_monomial, ca_vars, model)
+            elif count_nu > 0:
+                name = variables_in_monomial[nu_idx]
+                variables_in_monomial.pop(nu_idx)
+                prefix, ab, _ = name.split("|")
+                a, b = map(int, ab.split("."))
+                nu_ab = ca_vars[prefix][a, b]
+                gp_monomial = nu_ab * ca_linearize_monomial(variables_in_monomial, ca_vars, model)
             else:
                 gp_monomial = ca_linearize_monomial(variables_in_monomial, ca_vars, model)
         else:

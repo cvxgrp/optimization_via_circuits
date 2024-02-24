@@ -12,7 +12,7 @@ def main():
     Inductance = 2.
     R = 1.
 
-    solver = "ca"
+    solver = "ipopt"
     # ciropt definitions
     problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
     problem.obj = problem.b + problem.d

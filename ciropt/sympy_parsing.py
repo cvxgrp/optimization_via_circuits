@@ -31,12 +31,30 @@ def const_coeff_expr(expr, name2idx, x_size):
     return np.concatenate([row, np.zeros(x_size - len(name2idx))], axis=0).reshape(-1, 1)
 
 
-def sp_v_coeff_matrix(sp_exp, core_vars):
-    # get constant coefficient matrices from linear expressions at the 
-    # coordinates of F, G stored in sp_exp 
-    # all matrices in sp_exp are linear in the linearized variables of core_vars
+def sp_v_coeff_matrix(sp_exp, discretization_params):
+    """
+    Get constant coefficient matrices from linear expressions at the coordinates of F, G stored in sp_exp 
+    all matrices in sp_exp are linear in the linearized variables of discretization_params
+    sp_exp: OrderedDict() 
+                1) F/Gweights for inequalities
+                    if there are extra inequalities (besides the interpolating ones), then I(extra ineq.)=1
+                    sp_exp[(0, 0, i, 0)] = {"F" : Fweights_ij, "G" : Gweights_ij}
+                        ith extra inequality
+                    and
+                    sp_exp[(0, f_idx + I(extra ineq.), i, j)] = {"F" : Fweights_ij, "G" : Gweights_ij}
+                        (i,j)th interpolating inequality for function f_idx
+                2) F/Gweights for equalities
+                    sp_exp[(1, 0, i, 0)] = {"F" : Fweights_ij, "G" : Gweights_ij}
+                        ith equality for function f_idx
+                3) F/Gweights for objective
+                    sp_exp["FG_d"] = {"F" : Fweights_d, "G" : Gweights_d}
+    Decompose each matrix F_weights, G_weights with sympy polynomial entries into a matrix
+    with constant coefficients and a vector with dummy variables for all monomials of discretization parameters
+    such that
+        vectorize(F/G_weights) = coeff_matrix @ sp_v[ : coeff_matrix.shape[1]]
+    """
     v_coeffs = {"F":[], "G":[]}
-    v_names = [1] + core_vars
+    v_names = [1] + discretization_params
     name2idx = {var : idx for idx, var in enumerate(v_names)}
     v_k_list = list(sp_exp.keys())
     for k in v_k_list:

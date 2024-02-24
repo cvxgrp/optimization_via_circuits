@@ -13,7 +13,7 @@ def main():
     mu = 0.000001
     Capacitance = 1.
 
-    solver = "ca"
+    solver = "ipopt"
 
     # Ciropt formulation
     problem = co.gradient_flow_circuit(mu, np.inf, Capacitance)
