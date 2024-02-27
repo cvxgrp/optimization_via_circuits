@@ -9,7 +9,9 @@ from ciropt.utils import *
 
 
 def gp_linearize_monomial(monomial, gp_vars, model):
-    # introduce quadratic constraints to make current monomial linear w.r.t. new variables
+    """
+    Introduce quadratic constraints to make current monomial linear w.r.t. new variables
+    """
     if monomial == []:
         return 1
     monomial = sorted(monomial)
@@ -99,7 +101,7 @@ def sympy_matrix_to_gurobi(sp_matrix, gp_vars, model):
 
 def sympy_expression_to_casadi_lamb(sp_expression, ca_vars, model):
     """
-    Convert sumpy expression to expression using casadi variables
+    Convert sympy expression to expression using casadi variables
     """
     if not isinstance(sp_expression, sp.Basic):
         return float(sp_expression)

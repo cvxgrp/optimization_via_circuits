@@ -141,13 +141,13 @@ def prox_gradient_circuit(mu, L_smooth, R, Capacitance, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, b, d = params["h"], params["b"], params["d"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, b, d = problem.h, problem.b, problem.d
 
     f = define_function(problem, mu, L_smooth, package)
     g = define_function(problem, 0, np.inf, package)
@@ -527,8 +527,6 @@ def admm_euler_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         i_Ls_2[i] = i_Ls_1[i] + (h / Inductance) * (e_1 - triplets_1[i][0])
     sum_xi_1 = sum_xi_1 / n_func
     problem.add_constraint(Constraint( (e_1 - sum_xi_1) ** 2, "equality"))
-    # problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "inequality"))
-    # problem.add_constraint(Constraint(-(e_1 - sum_xi_1) ** 2, "equality"))
 
     E_1 = 0; E_2 = 0
     Delta_1 = - b * f_star

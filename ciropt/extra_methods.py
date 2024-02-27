@@ -226,6 +226,7 @@ def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0
 def solve_gp_qcqp_matrix(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
     """
     Use gurobipy branch-and-bound to solve a QCQP in matrix form
+        with variables x = [vec(v), vec(lamb), vec(nu), vec(P)], and X = xx^T 
     """
     try:
         import gurobipy as gp
@@ -352,6 +353,10 @@ def solve_gp_qcqp_matrix(self, verbose=True, debug=False, time_limit=1000, ftol=
    
 
 def solve_qcqp_sni(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kwargs):
+    """
+    Use Suggest-and-Improve QCQP framework to find proof
+        with variables x = [vec(v), vec(lamb), vec(nu), vec(P)]
+    """
     try:
         import qcqp as sni
     except ImportError:
@@ -645,8 +650,8 @@ def solve_dccp(self, verbose=True, max_iter=1000, debug=False, bounds=None, **kw
 def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None, cvx_solver=cp.CLARABEL, **kwargs):
     """
     Formulate problem explicitly as QCQP using x and matrices X and Z
-        keep Z=PP^T as it is, not aggregate into x = vec(p, lambda)
-        and relax it to convex SDP relaxation or to get bounds on the variables
+        keep Z=PP^T as it is, do not aggregate it into x = vec(p, lambda)
+    and relax it to convex SDP relaxation or to get bounds on the variables
     """
     dim_G = Point.counter
     dim_F = Expression.counter 
@@ -797,8 +802,8 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
 
 def bounds_sdp_relax_all(self, verbose=True, cvx_solver=cp.CLARABEL, debug=False, bounds=None, **kwargs):
     """
-    Formulate problem explicitly as QCQP using x and matrix X
-    variable x = vec(v, lambda, P), aggregating Z=PP^T
+    Formulate problem explicitly as QCQP using variables x and matrix X
+        variable x = vec(v, lambda, P), aggregating Z=PP^T
     and relax it to convex SDP to get bounds on the variables
     """
     dim_G = Point.counter

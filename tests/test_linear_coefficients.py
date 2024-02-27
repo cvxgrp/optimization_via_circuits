@@ -17,35 +17,35 @@ def main():
     Inductance = 1.
     R = 1.
 
-    # solver = "ipopt_qcqp"
-    solver = "ipopt_qcqp_matrix"
-    problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
-    problem.obj = problem.b + problem.d
-    res, sol, sp_exp = problem.solve(solver=solver, verbose=False, debug=True)[:3]
+    for solver in ["ipopt_qcqp", "ipopt_qcqp_matrix"]:
+        print(f"{solver=}")
+        problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
+        problem.obj = problem.b + problem.d
+        res, sol, sp_exp = problem.solve(solver=solver, verbose=False, debug=True)[:3]
 
-    sp_v = np.array([1] + [sp.symbols(name) for name in problem.v_names[1:]])
-    name2idx = problem.name2idx
+        sp_v = np.array([1] + [sp.symbols(name) for name in problem.v_names[1:]])
+        name2idx = problem.name2idx
 
-    for k in sp_exp.keys():
-        for mat_expr in sp_exp[k].values():
-            coeff_matrix = co.linear_matrix_expr_to_coeff_matrix(co.simplify_matrix(mat_expr), name2idx)
-            assert co.equal_sp_arrays(co.coeff_matrix_to_linear_matrix_expr(coeff_matrix, \
-                                                                    sp_v, mat_expr.shape), mat_expr)
+        for k in sp_exp.keys():
+            for mat_expr in sp_exp[k].values():
+                coeff_matrix = co.linear_matrix_expr_to_coeff_matrix(co.simplify_matrix(mat_expr), name2idx)
+                assert co.equal_sp_arrays(co.coeff_matrix_to_linear_matrix_expr(coeff_matrix, \
+                                                                        sp_v, mat_expr.shape), mat_expr)
+            
+        print("PASSED")
+
+        core_vars = sorted(['alpha', 'beta', 'h', 'b', 'd'])
+        # check coefficient matrices, ie, C @ v == \nabla l(F, G)
+        v_coeffs, v_names, name2idx2, v_k_list = co.sp_v_coeff_matrix(sp_exp, core_vars)
+        sp_v2 = np.array([1] + [sp.symbols(name) for name in v_names[1:]])
+
+        for i, k in enumerate(v_k_list):
+            for mtype, mat_expr in sp_exp[k].items():
+                coeff_matrix = v_coeffs[mtype][i]
+                assert co.equal_sp_arrays(co.coeff_matrix_to_linear_matrix_expr(coeff_matrix, sp_v2, mat_expr.shape), mat_expr)
+        print("PASSED")
+
         
-    print("PASSED")
-
-    core_vars = sorted(['alpha', 'beta', 'h', 'b', 'd'])
-    # check coefficient matrices, ie, C @ v == \nabla l(F, G)
-    v_coeffs, v_names, name2idx2, v_k_list = co.sp_v_coeff_matrix(sp_exp, core_vars)
-    sp_v2 = np.array([1] + [sp.symbols(name) for name in v_names[1:]])
-
-    for i, k in enumerate(v_k_list):
-        for mtype, mat_expr in sp_exp[k].items():
-            coeff_matrix = v_coeffs[mtype][i]
-            assert co.equal_sp_arrays(co.coeff_matrix_to_linear_matrix_expr(coeff_matrix, sp_v2, mat_expr.shape), mat_expr)
-    print("PASSED")
-
-    
     a = np.zeros((10, 10))
     count = 0
     for i in range(10):
