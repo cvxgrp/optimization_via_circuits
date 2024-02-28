@@ -114,6 +114,7 @@ class CircuitOpt(object):
     def circuit_symbolic_matrices(self, list_of_leaf_functions, dim_G, dim_F):
         """
         Extract coefficient matrices for primal variable F (function values) and primal variable G (Gram matrix)
+        that appear in objective, interlolating constraints and extra constraints
             coefficients are linear in p = (monomials of h, alpha, beta, b, d, gamma) 
         sp_exp: OrderedDict() 
                 1) F/Gweights for inequalities
