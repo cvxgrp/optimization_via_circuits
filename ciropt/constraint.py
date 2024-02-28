@@ -26,8 +26,6 @@ class Constraint(object):
         self.expression = expression
         # Verify that 'equality_or_inequality' is well defined and store its value
         assert equality_or_inequality in {'equality', 'inequality'}
-        if equality_or_inequality == "equality":
-            raise ValueError("TODO: not implemented")
         self.equality_or_inequality = equality_or_inequality
         # The value of the underlying expression must be stored in self._value.
         self._value = None
@@ -53,3 +51,4 @@ class Constraint(object):
             raise ValueError("The PEP must be solved to evaluate Constraints dual variables!")
 
         return self._dual_variable_value
+    
