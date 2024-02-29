@@ -545,13 +545,13 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, alpha, b, d, gamma = params["h"], params["alpha"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step 
-        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+        h, alpha, b, d, gamma = problem.h, problem.alpha, problem.b, problem.d, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -566,34 +566,35 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     e_23_1 = problem.set_initial_point()
     # initialize currents on inductors to sum to 0 on every edge
     i_L_12n1_1 = problem.set_initial_point()
-    # i_L_12n2_1 = -i_L_12n1_1
     i_L_23n2_1 = problem.set_initial_point()
-    # i_L_23n3_1 = -i_L_23n2_1
 
-    x1_2, g1_2, f1_2 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
-    x2_2, g2_2, f2_2 = proximal_step((-R * i_L_12n1_1 + e_12_1) \
-                                     + (R * i_L_23n2_1 + e_23_1), f2, R)
-    x3_2, g3_2, f3_2 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
+    x1_2, y1_2, f1_2 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1 + e_12_1) \
+                                            + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
+    x3_2, y3_2, f3_2 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
 
     e_12_2 = (x1_2 + x2_2) / 2
     e_23_2 = (x2_2 + x3_2) / 2
     i_L_12n1_2 = i_L_12n1_1 + ( h / Inductance) * (e_12_2 - x1_2)
-    i_L_23n2_2 = i_L_23n2_1 + ( h / Inductance) * (e_23_2 - x3_2)
-    # + (Inductance/2) * (-i_L_12n1_1 - y2_star/2) ** 2 + (Inductance/2) * (i_L_23n2_1 - y2_star/2) ** 2 \
+    i_L_23n2_2 = i_L_23n2_1 + ( h / Inductance) * (e_23_2 - x2_2)
+    # + (Inductance/2) * (-i_L_12n1_1 - y2_star * alpha) ** 2 \
+    # + (Inductance/2) * (i_L_23n2_1 - y2_star * (1 - alpha)) ** 2 \
     E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
             + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
-            + (Inductance/2) * (-i_L_12n1_1 - y2_star/2) ** 2 + (Inductance/2) * (i_L_23n2_1 - y2_star/2) ** 2 \
+            + (Inductance/2) * (i_L_23n2_1 - i_L_12n1_1 - y2_star) ** 2 \
             + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
     E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
         + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
-        + (Inductance/2) * (-i_L_12n1_2 - y2_star/2) ** 2 + (Inductance/2) * (i_L_23n2_2 - y2_star/2) ** 2 \
+        + (Inductance/2) * (i_L_23n2_2 - i_L_12n1_2 - y2_star) ** 2 \
         + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
-    # E_1 = 0; E_2 = 0
-    # Delta_1 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
-    #             + b * ( (x1_2 - x_star) * (g1_2 - y1_star) + (x2_2 - x_star) * (g2_2 - y2_star) + (x3_2 - x_star) * (g3_2 - y3_star))
-    Delta_1 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
-                - b * f_star + b *( f1_2 - y1_star * (x1_2 - x_star) + f2_2 - y2_star * (x2_2 - x_star) + f3_2 - y3_star * (x3_2 - x_star))
-    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+
+    Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
+                           + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
+            + b * ( (x1_2 - x_star) * (y1_2 - y1_star) \
+                    + (x2_2 - x_star) * (y2_2 - y2_star) \
+                    + (x3_2 - x_star) * (y3_2 - y3_star))
+
+    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
 
 
@@ -645,10 +646,6 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
     Delta_2 = d * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
               b * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) 
                                                         + (x3_2 - x3_star) * (y3_2 - y3_star))
-    # Delta_2 = b * ((f1_2 + f2_2 + f3_2) - (f1_star + f2_star + f3_star)) \
-    #             + (b / (2 * R)) * (x1_2 * (x1_2 - x2_2) + x2_2 * (2 * x2_2 - x1_2 - x3_2) + x3_2 * (x3_2 - x2_2)) \
-    #             - (b / (2 * R)) * (x1_star * (x1_star - x2_star) + x2_star * (2 * x2_star - x1_star - x3_star) \
-    #                    + x3_star * (x3_star - x2_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
 
