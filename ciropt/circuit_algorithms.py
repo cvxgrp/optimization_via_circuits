@@ -473,9 +473,9 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         E_1 += (Inductance/2) * (i_Ls_1[i] - ys_star[i]) ** 2
         E_2 += (Inductance/2) * (i_Ls_2[i] - ys_star[i]) ** 2
         # Delta_1 += d * R * (triplets_2[i][1] - i_Ls_1[i])**2 \
-        #          + b *( triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
+        #           + b *( triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
         Delta_1 += d * R * (triplets_2[i][1] - i_Ls_2[i])**2 \
-                 + b *( triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
+                    + b *( triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -543,9 +543,10 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     if params is not None:
         # verification mode: PEP
         problem = PEPit.PEP()
-        package = pep_func
+        package = pep_func 
         proximal_step = pep_proximal_step
-        h, alpha, b, d, gamma = params["h"], params["alpha"], params["b"], params["d"], params["gamma"]
+        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        # h, alpha, b, d, gamma = params["h"], params["alpha"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
@@ -558,9 +559,12 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     f3 = define_function(problem, mu, L_smooth, package)
 
     x_star, y_star, f_star = (f1 + f2 + f3).stationary_point(return_gradient_and_function_value=True)
-    y1_star, _ = f1.oracle(x_star)
-    y2_star, _ = f2.oracle(x_star)
-    y3_star, _ = f3.oracle(x_star)
+    y1_star, f1_star = f1.oracle(x_star)
+    y2_star, f2_star = f2.oracle(x_star)
+    y3_star, f3_star = f3.oracle(x_star)
+
+    y2_21_star = problem.set_initial_point()
+    y2_23_star = y2_star - y2_21_star
 
     e_12_1 = problem.set_initial_point()
     e_23_1 = problem.set_initial_point()
@@ -569,28 +573,41 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     i_L_23n2_1 = problem.set_initial_point()
 
     x1_2, y1_2, f1_2 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
-    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1 + e_12_1) \
-                                            + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
+    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1 + e_12_1) + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
     x3_2, y3_2, f3_2 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
 
     e_12_2 = (x1_2 + x2_2) / 2
     e_23_2 = (x2_2 + x3_2) / 2
     i_L_12n1_2 = i_L_12n1_1 + ( h / Inductance) * (e_12_2 - x1_2)
     i_L_23n2_2 = i_L_23n2_1 + ( h / Inductance) * (e_23_2 - x2_2)
-    # + (Inductance/2) * (-i_L_12n1_1 - y2_star * alpha) ** 2 \
-    # + (Inductance/2) * (i_L_23n2_1 - y2_star * (1 - alpha)) ** 2 \
+
     E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
             + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
-            + (Inductance/2) * (i_L_23n2_1 - i_L_12n1_1 - y2_star) ** 2 \
+            + (Inductance/2) * (-i_L_12n1_1 - y2_21_star) ** 2 \
+            + (Inductance/2) * (i_L_23n2_1 - y2_23_star) ** 2 \
             + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
     E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
         + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
-        + (Inductance/2) * (i_L_23n2_2 - i_L_12n1_2 - y2_star) ** 2 \
+        + (Inductance/2) * (-i_L_12n1_2 - y2_21_star) ** 2 \
+        + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
         + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
+    # Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
+    #                      + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
+    #           + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star)\
+    #                 + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
+    #                 + f3_2 - f3_star - y3_star * (x3_2 - x_star))
 
+    # E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
+    #         + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
+    #         + (Inductance/2) * (i_L_23n2_1 - i_L_12n1_1 - y2_star) ** 2 \
+    #         + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
+    # E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
+    #     + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
+    #     + (Inductance/2) * (i_L_23n2_2 - i_L_12n1_2 - y2_star) ** 2 \
+    #     + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
     Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
-                           + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
-            + b * ( (x1_2 - x_star) * (y1_2 - y1_star) \
+                         + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
+              + b * ( (x1_2 - x_star) * (y1_2 - y1_star) \
                     + (x2_2 - x_star) * (y2_2 - y2_star) \
                     + (x3_2 - x_star) * (y3_2 - y3_star))
 

@@ -42,7 +42,8 @@ class CircuitOpt(object):
         self.alpha = sp.symbols('alpha')
         self.beta = sp.symbols('beta')
         self.gamma = sp.symbols('gamma')
-        self.discretization_params = sorted(['alpha', 'beta', 'h', 'b', 'd', 'gamma'])
+        self.delta = sp.symbols('delta')
+        self.discretization_params = sorted(['alpha', 'beta', 'h', 'b', 'd', 'gamma', 'delta'])
 
 
     @staticmethod
@@ -206,6 +207,7 @@ class CircuitOpt(object):
                     'd': opti.variable(),
                     'h': opti.variable(),
                     'gamma': opti.variable(),
+                    'delta': opti.variable(),
                     'alpha': opti.variable(),
                     'beta': opti.variable(), 
                     'P': opti.variable(dim_G, dim_G) }
@@ -214,8 +216,8 @@ class CircuitOpt(object):
         ca_add_bounds(opti, bounds, ca_vars, set())
         opti.subject_to( ca_vars["b"] >= 0 ); opti.subject_to( ca_vars["d"] >= 0 )
         opti.subject_to( ca_vars["h"] >= 0 )
-        opti.subject_to( ca_vars["alpha"] >= -100 ); opti.subject_to( ca_vars["alpha"] <= 100 )
-        opti.subject_to( ca_vars["beta"] >= -100 ); opti.subject_to( ca_vars["beta"] <= 100 )
+        # opti.subject_to( ca_vars["alpha"] >= -100 ); opti.subject_to( ca_vars["alpha"] <= 100 )
+        # opti.subject_to( ca_vars["beta"] >= -100 ); opti.subject_to( ca_vars["beta"] <= 100 )
 
         list_of_leaf_functions = [function for function in Function.list_of_functions
                                   if function.get_is_leaf()]
