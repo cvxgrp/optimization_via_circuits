@@ -704,3 +704,36 @@ def admm_consensus_proof(mu, L_smooth, R, Inductance, params=None):
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
+
+
+def example_fCR_circuit(mu, L_smooth, Capacitance, R, params=None): 
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+    func = define_function(problem, mu, L_smooth, package )
+    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
+
+    v_C_1 = problem.set_initial_point()
+    x_1, y_1, f_1 = proximal_step(v_C_1, func, R)
+
+    v_C_1p5 = v_C_1 - (alpha * h / Capacitance) * y_1
+    x_1p5, y_1p5, f_1p5 = proximal_step(v_C_1p5, func, R)
+
+    v_C_2 = v_C_1  - (beta * h / Capacitance) * y_1  \
+               - ((1 - beta) * h / Capacitance) * y_1p5
+    x_2, y_2, f_2 = proximal_step(v_C_2, func, R)
+
+    E_1 = (Capacitance/2) * (v_C_1 - x_star)**2
+    E_2 = (Capacitance/2) * (v_C_2 - x_star)**2
+    Delta_1 = b * (x_1 - x_star) * (y_1 - y_star) + d * R * (y_1)**2
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
