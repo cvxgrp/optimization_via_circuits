@@ -13,7 +13,7 @@ def main():
     mu = 0.000001
     Capacitance = 1.
 
-    solver = "ca"
+    solver = "ipopt"
 
     # Ciropt formulation
     problem = co.gradient_flow_circuit(mu, np.inf, Capacitance)
@@ -107,7 +107,7 @@ def main():
     for i in range(size_I_function):
         for j in range(size_I_function):
             if i == j: continue
-            F1, G1 = sp_exp[(0,i,j)]["F"], sp_exp[(0,i,j)]["G"]
+            F1, G1 = sp_exp[(0, 0, i, j)]["F"], sp_exp[(0, 0, i, j)]["G"]
             F2 = a(i, j)
             G2 = sp_A(i, j) + (mu/2) * sp_B(i, j)
             assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}")

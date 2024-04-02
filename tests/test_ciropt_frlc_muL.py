@@ -12,7 +12,7 @@ def main():
     Inductance = 2.
     R = 1.
 
-    solver = "ca"
+    solver = "ipopt"
     # ciropt definitions
     problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
     problem.obj = problem.b + problem.d
@@ -25,7 +25,7 @@ def main():
 
     # Grammian definitions
     size_I = 4          # I = { star, 1, 1.5, 2 }
-    dim_G = 6           # { x_star, x_1, i_L_1, g_1, g_1p5, g_2 }
+    dim_G = 6           # { x_star, v_C_1, i_L_1, g_1, g_1p5, g_2 }
     dim_F = 4           # { f_star, f_1, f_1p5, f_2}
 
     opti = ca.Opti()
@@ -61,27 +61,27 @@ def main():
     # v_C_1 = x_1 + R * g_1 - R * i_L_1
     v_C_1    = co.one_hot(dim_G, 1)
     i_L_1    = co.one_hot(dim_G, 2)
-    x_1 = v_C_1 + R * i_L_1 - R * g_1
-    i_L_1p5 = i_L_1 + (alpha_h / Inductance) * (v_C_1 - x_1) 
+    x_1 = v_C_1 + R * i_L_1
+    i_L_1p5 = i_L_1 + (alpha_h / Inductance) * (v_C_1 - (x_1 - R * g_1)) 
     v_C_1p5 = v_C_1 - (alpha_h / Capacitance) * g_1
-    x_1p5 = R * i_L_1p5 + v_C_1p5 - R * g_1p5 
+    x_1p5 = R * i_L_1p5 + v_C_1p5
 
-    i_L_2 = i_L_1 + (beta_h / Inductance) * (v_C_1 - x_1) + \
-                    ((h - beta_h) / Inductance) * (v_C_1p5 - x_1p5) 
+    i_L_2 = i_L_1 + (beta_h / Inductance) * (v_C_1 - (x_1 - R * g_1)) + \
+                    ((h - beta_h) / Inductance) * (v_C_1p5 - (x_1p5 - R * g_1p5)) 
     v_C_2 = v_C_1 - (beta_h / Capacitance) * g_1 - ((h - beta_h) / Capacitance) * g_1p5
-    x_2 = R * i_L_2 + v_C_2 - R * g_2
+    x_2 = R * i_L_2 + v_C_2
     Xs = [x_star, x_1, x_1p5, x_2]
 
     sp_vars = {name : sp.symbols(name) for name in ca_vars.keys()}
-    sp_i_L_1p5 = i_L_1 + (sp_vars["alpha_h"] / Inductance) * (v_C_1 - x_1) 
+    sp_i_L_1p5 = i_L_1 + (sp_vars["alpha_h"] / Inductance) * (v_C_1 - (x_1 - R * g_1) ) 
     sp_v_C_1p5 = v_C_1 - (sp_vars["alpha_h"] / Capacitance) * g_1
-    sp_x_1p5 = R * sp_i_L_1p5 + sp_v_C_1p5 - R * g_1p5 
+    sp_x_1p5 = R * sp_i_L_1p5 + sp_v_C_1p5
 
-    sp_i_L_2 = i_L_1 + (sp_vars["beta_h"] / Inductance) * (v_C_1 - x_1) + \
-                    ((sp_vars["h"] - sp_vars["beta_h"]) / Inductance) * (sp_v_C_1p5 - sp_x_1p5)
+    sp_i_L_2 = i_L_1 + (sp_vars["beta_h"] / Inductance) * (v_C_1 - (x_1 - R * g_1)) + \
+                    ((sp_vars["h"] - sp_vars["beta_h"]) / Inductance) * (sp_v_C_1p5 - (sp_x_1p5 - R * g_1p5))
     sp_v_C_2 = v_C_1 - (sp_vars["beta_h"] / Capacitance) * g_1 - \
                     ((sp_vars["h"] - sp_vars["beta_h"]) / Capacitance) * g_1p5 
-    sp_x_2 = R * sp_i_L_2 + sp_v_C_2 - R * g_2
+    sp_x_2 = R * sp_i_L_2 + sp_v_C_2
 
     sp_Xs = [x_star, x_1, sp_x_1p5, sp_x_2]
 
@@ -144,7 +144,7 @@ def main():
     for i in range(size_I_function):
         for j in range(size_I_function):
             if i == j: continue
-            F1, G1 = sp_exp[(0,i,j)]["F"], sp_exp[(0,i,j)]["G"]
+            F1, G1 = sp_exp[(0, 0, i, j)]["F"], sp_exp[(0, 0, i, j)]["G"]
             F2 = a(i, j)
             G2 = co.simplify_matrix(sp_A(i, j) + (1./(2*L_smooth)) * sp_C(i, j) + mu / (2 * (1 - mu / L_smooth)) * sp_D(i, j))
             assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}, \n{G1-G2=}")

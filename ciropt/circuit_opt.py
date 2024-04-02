@@ -42,7 +42,8 @@ class CircuitOpt(object):
         self.alpha = sp.symbols('alpha')
         self.beta = sp.symbols('beta')
         self.gamma = sp.symbols('gamma')
-        self.discretization_params = sorted(['alpha', 'beta', 'h', 'b', 'd', 'gamma'])
+        self.delta = sp.symbols('delta')
+        self.discretization_params = sorted(['alpha', 'beta', 'h', 'b', 'd', 'gamma', 'delta'])
 
 
     @staticmethod
@@ -75,8 +76,10 @@ class CircuitOpt(object):
     
     def set_performance_metric( self,  perf_metric):
         """
-        perf_metric = E_2 - (E_1 - Delta_1)
-        Delta_1 = b * (tilde_f_1 - f_star) + d * (R * \|i_R\|^2_2)
+        The goal is to show that descent lemma holds, ie, for all one step transitions
+        perf_metric is nonpositive for
+            perf_metric = E_2 - (E_1 - Delta_1)
+        Delta_1 = b * (x - x^\star) * (y - y_star) + d * (R * \|i_R - i_R^\star\|^2_2)
         """
         assert isinstance(perf_metric, Expression)
         self.perf_metric = perf_metric
@@ -192,7 +195,7 @@ class CircuitOpt(object):
     def solve_ipopt(self, verbose=True, debug=False, init_vals=None, bounds=None, **kwargs):
         """
         Use ipopt to find proofs: 
-            solve the nonconvex problem by directly dualizing the grammian formulation, 
+            solve the nonconvex problem by directly dualizing the Grammian formulation, 
             ie, each expression is polynomial in discretization parameters linear in G and F 
             without introducing the dummy variables for the discretization parameters
         """
@@ -204,12 +207,17 @@ class CircuitOpt(object):
                     'd': opti.variable(),
                     'h': opti.variable(),
                     'gamma': opti.variable(),
+                    'delta': opti.variable(),
                     'alpha': opti.variable(),
                     'beta': opti.variable(), 
                     'P': opti.variable(dim_G, dim_G) }
         P = ca.tril(ca_vars["P"])
         opti.subject_to( ca.diag(P) >= np.zeros((dim_G, 1)) )
         ca_add_bounds(opti, bounds, ca_vars, set())
+        opti.subject_to( ca_vars["b"] >= 0 ); opti.subject_to( ca_vars["d"] >= 0 )
+        opti.subject_to( ca_vars["h"] >= 0 )
+        # opti.subject_to( ca_vars["alpha"] >= -100 ); opti.subject_to( ca_vars["alpha"] <= 100 )
+        # opti.subject_to( ca_vars["beta"] >= -100 ); opti.subject_to( ca_vars["beta"] <= 100 )
 
         list_of_leaf_functions = [function for function in Function.list_of_functions
                                   if function.get_is_leaf()]
