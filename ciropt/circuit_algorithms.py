@@ -581,30 +581,30 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     i_L_12n1_2 = i_L_12n1_1 + ( h / Inductance) * (e_12_2 - x1_2)
     i_L_23n2_2 = i_L_23n2_1 + ( h / Inductance) * (e_23_2 - x2_2)
 
-    E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
-            + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
-            + (Inductance/2) * (-i_L_12n1_1 - y2_21_star) ** 2 \
-            + (Inductance/2) * (i_L_23n2_1 - y2_23_star) ** 2 \
-            + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
-    E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
-        + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
-        + (Inductance/2) * (-i_L_12n1_2 - y2_21_star) ** 2 \
-        + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
-        + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
+    # E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
+    #         + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
+    #         + (Inductance/2) * (-i_L_12n1_1 - y2_21_star) ** 2 \
+    #         + (Inductance/2) * (i_L_23n2_1 - y2_23_star) ** 2 \
+    #         + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
+    # E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
+    #     + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
+    #     + (Inductance/2) * (-i_L_12n1_2 - y2_21_star) ** 2 \
+    #     + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
+    #     + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
     # Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
     #                      + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
     #           + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star)\
     #                 + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
     #                 + f3_2 - f3_star - y3_star * (x3_2 - x_star))
 
-    # E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
-    #         + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
-    #         + (Inductance/2) * (i_L_23n2_1 - i_L_12n1_1 - y2_star) ** 2 \
-    #         + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
-    # E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
-    #     + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
-    #     + (Inductance/2) * (i_L_23n2_2 - i_L_12n1_2 - y2_star) ** 2 \
-    #     + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
+    E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
+            + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
+            + (Inductance/2) * (i_L_23n2_1 - i_L_12n1_1 - y2_star) ** 2 \
+            + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
+    E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
+        + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
+        + (Inductance/2) * (i_L_23n2_2 - i_L_12n1_2 - y2_star) ** 2 \
+        + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
     Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
                          + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
               + b * ( (x1_2 - x_star) * (y1_2 - y1_star) \
