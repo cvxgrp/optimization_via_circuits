@@ -215,3 +215,15 @@ def matrix_to_diff_psd(A):
         A_minus = - A # A is NSD
     assert np.allclose(A, A_plus - A_minus)
     return A_plus, A_minus
+
+
+def define_function(problem, mu, L_smooth, package):
+    if mu != 0 and L_smooth < np.inf:
+        func = problem.declare_function( package.SmoothStronglyConvexFunction, L=L_smooth, mu=mu) 
+    elif mu != 0:
+        func = problem.declare_function( package.StronglyConvexFunction, mu=mu) 
+    elif L_smooth < np.inf:
+        func = problem.declare_function( package.SmoothConvexFunction, L=L_smooth) 
+    else:
+        func = problem.declare_function( package.ConvexFunction) 
+    return func
