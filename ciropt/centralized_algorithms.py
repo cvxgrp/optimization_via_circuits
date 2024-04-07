@@ -287,12 +287,14 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
         # verification mode: PEP
         problem = PEPit.PEP() 
         package = pep_func 
+        Constraint = pep_constr
         proximal_step = pep_proximal_step
         h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
+        Constraint = co_constr
         proximal_step = co_func.proximal_step
         h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
 
@@ -300,7 +302,9 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     f2 = define_function(problem, mu, L_smooth, package)
     x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
     y1_star, _ = f1.oracle(x_star)
-    y2_star = y_star - y1_star
+    # y2_star = y_star - y1_star
+    y2_star, _ = f2.oracle(x_star)
+    problem.add_constraint(Constraint((y1_star + y2_star - y_star) ** 2, "equality"))
 
     i_L_0 = problem.set_initial_point()
     x2_0 = problem.set_initial_point()
@@ -336,12 +340,14 @@ def davis_yin_splitting(mu, L_smooth, R, Inductance, params=None):
         # verification mode: PEP
         problem = PEPit.PEP() 
         package = pep_func 
+        Constraint = pep_constr
         proximal_step = pep_proximal_step
         h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
+        Constraint = co_constr
         proximal_step = co_func.proximal_step
         h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
 
@@ -352,7 +358,7 @@ def davis_yin_splitting(mu, L_smooth, R, Inductance, params=None):
     y1_star, _ = f1.oracle(x_star)
     y2_star, _ = f2.oracle(x_star)
     y3_star, _ = f3.oracle(x_star)
-    # y3_star = y_star - y1_star - y2_star
+    problem.add_constraint(Constraint((y1_star + y2_star + y3_star - y_star) ** 2, "equality"))
 
     i_L_0 = problem.set_initial_point()
     x2_0 = problem.set_initial_point()
@@ -386,10 +392,10 @@ def davis_yin_splitting(mu, L_smooth, R, Inductance, params=None):
     E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (e_1 - e_star)**2  
     E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (e_2 - e_star)**2  
 
-    # Delta_1 = d * (1 / R) * (x1_1 - x2_1)**2 \
-    #           + b * (f1_1 + f2_1 + f3_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - y3_star * (x2_1 - x_star) - f_star)
     Delta_1 = d * (1 / R) * (x1_1 - x2_1)**2 \
-              + b * ((y1_1 - y1_star) * (x1_1 - x_star) + (y2_1 - y2_star) * (x2_1 - x_star) + (y3_1 - y3_star) * (x2_1 - x_star))
+              + b * (f1_1 + f2_1 + f3_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - y3_star * (x2_1 - x_star) - f_star)
+    # Delta_1 = d * (1 / R) * (x1_1 - x2_1)**2 \
+    #           + b * ((y1_1 - y1_star) * (x1_1 - x_star) + (y2_1 - y2_star) * (x2_1 - x_star) + (y3_1 - y3_star) * (x2_1 - x_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -399,12 +405,14 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         # verification mode: PEP
         problem = PEPit.PEP()
         package = pep_func
+        Constraint = pep_constr
         proximal_step = pep_proximal_step
         h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
+        Constraint = co_constr
         proximal_step = co_func.proximal_step 
         h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
 
@@ -415,11 +423,14 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         else: f += fs[i]
     x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
     ys_star = [0] * n_func
-    ys_star[-1] = y_star
-    for i in range(n_func-1):
+    for i in range(n_func):
         gi, _ = fs[i].oracle(x_star)
         ys_star[i] = gi
-        ys_star[-1] -= gi
+        if i == 0:     
+            sum_ys_star = gi
+        else:
+            sum_ys_star += gi 
+    problem.add_constraint(Constraint((sum_ys_star - y_star) ** 2, "equality"))
 
     i_Ls_1 = [0] * n_func
     e_1 = problem.set_initial_point()
@@ -490,11 +501,14 @@ def admm_euler_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         else: f += fs[i]
     x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
     ys_star = [0] * n_func
-    ys_star[-1] = y_star
-    for i in range(n_func-1):
+    for i in range(n_func):
         gi, _ = fs[i].oracle(x_star)
         ys_star[i] = gi
-        ys_star[-1] -= gi
+        if i == 0:     
+            sum_ys_star = gi
+        else:
+            sum_ys_star += gi 
+    problem.add_constraint(Constraint((sum_ys_star - y_star) ** 2, "equality"))
 
     i_Ls_1 = [0] * n_func
     # initialize currents on inductors with \sum_l i_(L_l)(0)=0

@@ -13,6 +13,7 @@ from ciropt.utils import define_function
 
 
 def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
+    # line graph with 3 nodes
     if params is not None:
         # verification mode: PEP
         problem = PEPit.PEP()
@@ -82,6 +83,74 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     return problem
 
 
+def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
+    """
+    Mixing matrix for a line graph 
+    W = [[1/3, 2/3, 0], 
+         [1/3, 1/3, 1/3],
+         [0, 1/3, 2/3]]
+    """
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    f3 = define_function(problem, mu, L_smooth, package)
+    
+    # stepsize = Capacitance * R
+    x1_star = problem.set_initial_point()
+    x2_star = problem.set_initial_point()
+    x3_star = problem.set_initial_point()
+    y1_star, f1_star = f1.oracle(x1_star)
+    y2_star, f2_star = f2.oracle(x2_star)
+    y3_star, f3_star = f3.oracle(x3_star)
+    e1_star = x1_star - R * y1_star
+    e2_star = x2_star - R * y2_star
+    e3_star = x3_star - R * y3_star
+    problem.add_constraint(Constraint( ((e1_star - 2 * e2_star + e3_star) / (3 * R) - y2_star) ** 2, "equality"))
+
+    x1_1 = problem.set_initial_point()
+    y1_1, _ = f1.oracle(x1_1) 
+    x2_1 = problem.set_initial_point()
+    y2_1, _ = f2.oracle(x2_1)
+    x3_1 = problem.set_initial_point()
+    y3_1, _ = f3.oracle(x3_1)
+    e1_1 = x1_1 - R * y1_1
+    e2_1 = x2_1 - R * y2_1
+    e3_1 = x3_1 - R * y3_1
+
+    x1_2 = (2/3) * (x1_1 - R * y1_1) + (1/3) * (x2_1 - R * y2_1)
+    y1_2, f1_2 = f1.oracle(x1_2)
+    x2_2 = (1/3) * (x2_1 - R * y2_1) + (1/3) * (x1_1 - R * y1_1) + (1/3) * (x3_1 - R * y3_1)
+    y2_2, f2_2 = f2.oracle(x2_2)
+    x3_2 = (2/3) * (x3_1 - R * y3_1) + (1/3) * (x2_1 - R * y2_1)
+    y3_2, f3_2 = f3.oracle(x3_2)
+    e1_2 = x1_2 - R * y1_2
+    e2_2 = x2_2 - R * y2_2
+    e3_2 = x3_2 - R * y3_2
+
+    E_1 = (Capacitance/2) * ((e1_1 - e1_star)**2 + (e2_1 - e2_star)**2 + (e3_1 - e3_star)**2)
+    E_2 = (Capacitance/2) * ((e1_2 - e1_star)**2 + (e2_2 - e2_star)**2 + (e3_2 - e3_star)**2) 
+
+
+    Delta_2 = d * (1 / (3 * R)) * ((e1_2 - e2_2 - (e1_star - e2_star))**2 + (e3_2 - x2_2 - (e3_star - e2_star))**2) + \
+              b * (1/L_smooth - R) * ((y1_2 - y1_star)**2 + (y2_2 - y2_star)**2 + (y3_2 - y3_star)**2)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
+    return problem
+
+
 def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=None):
     if params is not None:
         # verification mode: PEP
@@ -132,4 +201,3 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
                                                         + (x3_2 - x3_star) * (y3_2 - y3_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
-
