@@ -20,15 +20,15 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
-        # h, alpha, b, d, gamma = params["h"], params["alpha"], params["b"], params["d"], params["gamma"]
+        # h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, alpha, b, d, gamma = problem.h, problem.alpha, problem.b, problem.d, problem.gamma
+        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -53,15 +53,27 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     i_L_12n1_1 = problem.set_initial_point()
     i_L_23n2_1 = problem.set_initial_point()
 
-    x1_2, y1_2, f1_2 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
-    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1 + e_12_1) + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
-    x3_2, y3_2, f3_2 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
+    x1_1p5, y1_1p5, f1_1p5 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
+    x2_1p5, y2_1p5, f2_1p5 = proximal_step(((-R * i_L_12n1_1 + e_12_1) + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
+    x3_1p5, y3_1p5, f3_1p5 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
+
+    e_12_1p5 = (x1_1p5 + x2_1p5) / 2
+    e_23_1p5 = (x2_1p5 + x3_1p5) / 2
+    i_L_12n1_1p5 = i_L_12n1_1 + ( alpha * h / Inductance) * (e_12_1p5 - x1_1p5)
+    i_L_23n2_1p5 = i_L_23n2_1 + ( alpha * h / Inductance) * (e_23_1p5 - x2_1p5)
+
+    x1_2, y1_2, f1_2 = proximal_step((R * i_L_12n1_1p5 + e_12_1p5), f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1p5 + e_12_1p5) + (R * i_L_23n2_1p5 + e_23_1p5))/2, f2, R/2)
+    x3_2, y3_2, f3_2 = proximal_step((-R * i_L_23n2_1p5 + e_23_1p5), f3, R)
 
     e_12_2 = (x1_2 + x2_2) / 2
     e_23_2 = (x2_2 + x3_2) / 2
-    i_L_12n1_2 = i_L_12n1_1 + ( h / Inductance) * (e_12_2 - x1_2)
-    i_L_23n2_2 = i_L_23n2_1 + ( h / Inductance) * (e_23_2 - x2_2)
-
+    i_L_12n1_2 = i_L_12n1_1 + ( beta * h / Inductance) * (e_12_1p5 - x1_1p5) \
+                            + ( (1-beta) * h / Inductance) * (e_12_2 - x1_2)      
+    i_L_23n2_2 = i_L_23n2_1 + ( beta * h / Inductance) * (e_23_1p5 - x2_1p5) \
+                            + ( (1-beta) * h / Inductance) * (e_23_2 - x2_2)
+    
+    # y1_12_star = y1_star; y3_32_star = y3_star
     E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
             + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
             + (Inductance/2) * (-i_L_12n1_1 - y2_21_star) ** 2 \
@@ -71,7 +83,7 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
         + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
         + (Inductance/2) * (-i_L_12n1_2 - y2_21_star) ** 2 \
         + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
-        + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2 
+        + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2  
     
     Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
                          + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
@@ -109,7 +121,6 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
     f2 = define_function(problem, mu, L_smooth, package)
     f3 = define_function(problem, mu, L_smooth, package)
     
-    # stepsize = Capacitance * R
     x1_star = problem.set_initial_point()
     x2_star = problem.set_initial_point()
     x3_star = problem.set_initial_point()
@@ -120,6 +131,8 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
     e2_star = x2_star - R * y2_star
     e3_star = x3_star - R * y3_star
     problem.add_constraint(Constraint( ((e1_star - 2 * e2_star + e3_star) / (3 * R) - y2_star) ** 2, "equality"))
+    problem.add_constraint(Constraint(((e2_star - e1_star) / (3 * R) - y1_star) ** 2, "equality"))
+    problem.add_constraint(Constraint(((e2_star - e3_star) / (3 * R) - y3_star) ** 2, "equality"))
 
     x1_1 = problem.set_initial_point()
     y1_1, _ = f1.oracle(x1_1) 
@@ -131,11 +144,11 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
     e2_1 = x2_1 - R * y2_1
     e3_1 = x3_1 - R * y3_1
 
-    x1_2 = (2/3) * (x1_1 - R * y1_1) + (1/3) * (x2_1 - R * y2_1)
+    x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (1/(3*R)) * ((x1_1 - R * y1_1) - (x2_1 - R * y2_1)))
     y1_2, f1_2 = f1.oracle(x1_2)
-    x2_2 = (1/3) * (x2_1 - R * y2_1) + (1/3) * (x1_1 - R * y1_1) + (1/3) * (x3_1 - R * y3_1)
+    x2_2 = x2_1 - (h / Capacitance) * (y2_1 + (1/(3*R)) * (2 * (x2_1 - R * y2_1) - (x1_1 - R * y1_1) - (x3_1 - R * y3_1)))
     y2_2, f2_2 = f2.oracle(x2_2)
-    x3_2 = (2/3) * (x3_1 - R * y3_1) + (1/3) * (x2_1 - R * y2_1)
+    x3_2 = x3_1 - (h / Capacitance) * (y3_1 - (1/(3*R)) * ((x3_1 - R * y3_1) - (x2_1 - R * y2_1)))
     y3_2, f3_2 = f3.oracle(x3_2)
     e1_2 = x1_2 - R * y1_2
     e2_2 = x2_2 - R * y2_2

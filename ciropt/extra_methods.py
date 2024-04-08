@@ -125,6 +125,7 @@ def solve_ipopt_qcqp_matrix(self, verbose=True, init_values=None, bounds=None, d
 def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
     """
     Use gurobipy branch-and-bound to solve a QCQP
+        keep all the variables separately, without forming a unified (vectorized) variable
     """
     try:
         import gurobipy as gp
