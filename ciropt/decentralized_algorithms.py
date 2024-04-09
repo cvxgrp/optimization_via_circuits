@@ -148,7 +148,7 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
     y1_2, f1_2 = f1.oracle(x1_2)
     x2_2 = x2_1 - (h / Capacitance) * (y2_1 + (1/(3*R)) * (2 * (x2_1 - R * y2_1) - (x1_1 - R * y1_1) - (x3_1 - R * y3_1)))
     y2_2, f2_2 = f2.oracle(x2_2)
-    x3_2 = x3_1 - (h / Capacitance) * (y3_1 - (1/(3*R)) * ((x3_1 - R * y3_1) - (x2_1 - R * y2_1)))
+    x3_2 = x3_1 - (h / Capacitance) * (y3_1 + (1/(3*R)) * ((x3_1 - R * y3_1) - (x2_1 - R * y2_1)))
     y3_2, f3_2 = f3.oracle(x3_2)
     e1_2 = x1_2 - R * y1_2
     e2_2 = x2_2 - R * y2_2
@@ -157,10 +157,9 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
     E_1 = (Capacitance/2) * ((e1_1 - e1_star)**2 + (e2_1 - e2_star)**2 + (e3_1 - e3_star)**2)
     E_2 = (Capacitance/2) * ((e1_2 - e1_star)**2 + (e2_2 - e2_star)**2 + (e3_2 - e3_star)**2) 
 
-
-    Delta_2 = d * (1 / (3 * R)) * ((e1_2 - e2_2 - (e1_star - e2_star))**2 + (e3_2 - x2_2 - (e3_star - e2_star))**2) + \
-              b * (1/L_smooth - R) * ((y1_2 - y1_star)**2 + (y2_2 - y2_star)**2 + (y3_2 - y3_star)**2)
-    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
+    Delta_1 = d * (1 / (3 * R)) * ((e1_1 - e2_1 - (e1_star - e2_star))**2 + (e3_1 - e2_1 - (e3_star - e2_star))**2) + \
+              b * (1/L_smooth - R) * ((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
 
