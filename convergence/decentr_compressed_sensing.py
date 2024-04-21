@@ -90,7 +90,7 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
             i_L_k[j] = i_L_k_prev[j] + step_size * ( e_k[j] - x_k[j])
             
         if alg_type == "cir_dadmm_l":
-            i_Lextra_k = i_Lextra_k_prev #+ (h / L_extra) * (x_k[3] - x_k[4])
+            i_Lextra_k = i_Lextra_k_prev + (h / L_extra) * (x_k[3] - x_k[4])
         
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
