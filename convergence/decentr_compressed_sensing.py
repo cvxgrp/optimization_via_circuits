@@ -63,8 +63,7 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
     i_L_k = [np.zeros((deg, vector_size)) for deg in node_degrees]
     e_k = [np.zeros((deg, vector_size)) for deg in node_degrees]
     b_stack = np.reshape(np.repeat(b, n_node), (n_sensor, n_node))
-    if alg_type == "cir_dadmm_l":
-        i_Lextra_k = np.zeros((1, vector_size))
+    i_Lextra_k = np.zeros((1, vector_size))
 
     for ii in range(itr_num):
         if ii >= 1: x_k_prev = np.array(x_k)
@@ -91,14 +90,14 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
             i_L_k[j] = i_L_k_prev[j] + step_size * ( e_k[j] - x_k[j])
             
         if alg_type == "cir_dadmm_l":
-            i_Lextra_k = i_Lextra_k_prev + (h / L_extra) * (x_k[3] - x_k[4])
+            i_Lextra_k = i_Lextra_k_prev #+ (h / L_extra) * (x_k[3] - x_k[4])
         
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
         const_vio.append(np.sum((A@x_k.T - b_stack)**2))
         f_reldiff.append(np.abs(f_star - f_val)/f_star)
         if printing and ii % freq == 0:
-            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
+            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}, {np.linalg.norm(x_k)}")
 
     return err_opt_star, err_opt_reldiff, const_vio, f_reldiff
 
