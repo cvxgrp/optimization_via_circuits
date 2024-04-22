@@ -10,12 +10,34 @@ import cvxpy as cp
 
 
 
+def prox_fj_geom_mean(z, alpha, b):
+    """
+    return minimizer to \|x - b\|_2 + (1/(2 * alpha)) * \|x - z\|_2^2
+    """
+    e = b - z
+    x = b - (e / np.linalg.norm(e)) * np.maximum(np.linalg.norm(e) - alpha, 0.)
+    return x
+
+
 def cvx_prox_fj_geom_mean(z, alpha, b, vector_size):
     """
-    return minimizer to (1/2)\|x - b\|_2^2 + (1/(2 * alpha)) * \|x - z\|_2^2
+    return minimizer to \|x - b\|_2 + (1/(2 * alpha)) * \|x - z\|_2^2
     """
     x = cp.Variable(vector_size)
-    f = (1/2) * cp.norm(x - b, 2) + (1/(2*alpha)) * cp.sum_squares(x - z)
+    f = cp.norm(x - b, 2) + (1/(2*alpha)) * cp.sum_squares(x - z)
+
+    prob = cp.Problem(cp.Minimize(f), [])
+    prob.solve()
+    assert prob.status=="optimal", print(prob.status)
+    return x.value
+
+
+def cvx_prox_fj_geom_mean_sc(z, alpha, b, vector_size, eps=1e-4):
+    """
+    return minimizer to \|x - b\|_2 + eps * \|x\|_2^2 + (1/(2 * alpha)) * \|x - z\|_2^2
+    """
+    x = cp.Variable(vector_size)
+    f = cp.norm(x - b, 2)  + eps * cp.sum_squares(x) + (1/(2*alpha)) * cp.sum_squares(x - z)
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -26,6 +48,7 @@ def cvx_prox_fj_geom_mean(z, alpha, b, vector_size):
 def cvx_geom_median(problem_spec, problem_data):
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
+    eps = problem_spec['sc_eps']
     b = problem_data['b']
 
     x = cp.Variable(vector_size)
@@ -33,7 +56,9 @@ def cvx_geom_median(problem_spec, problem_data):
 
     for jj in range(n_node) :
         b_temp = b[jj*vector_size : (jj+1)*vector_size]
-        f += 1/2 * cp.norm(x - b_temp, 2) 
+        f += cp.norm(x - b_temp, 2)  
+        if jj in [3, 4]:
+            f += eps * cp.sum_squares(x) 
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -82,10 +107,11 @@ def graph_generation_nodes6():
     return network_data
 
 
-def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x_opt_star, f_star, params=None) :
+def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x_opt_star, f_star, printing=False, freq=200, params=None) :
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
     alpha = problem_data['alpha']
+    eps = problem_spec['sc_eps']
 
     b = problem_data['b']
     itr_num = problem_data['itr_num']
@@ -104,16 +130,19 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     for ii in range(itr_num) :
         x_k_prev = np.array(x_k)
         w_k_prev = np.array(w_k)
-        e_k_prev = np.array(e_k)
         f_val = 0
         for jj in range(n_node) :
-            b_temp = b[jj*vector_size:(jj+1)*vector_size]
-            e_k[jj] = b_temp - (W[jj]@x_k_prev - w_k_prev[jj])
-            x_k[jj] = b_temp - (e_k[jj] / np.linalg.norm(e_k[jj])) * np.maximum(np.linalg.norm(e_k[jj])-alpha, 0.)
+            b_temp = b[jj*vector_size : (jj+1)*vector_size]
+            z_temp = (W[jj]@x_k_prev - w_k_prev[jj])
+            if jj in [3, 4]:
+                x_k[jj] = cvx_prox_fj_geom_mean_sc(z_temp, alpha, b_temp, vector_size, eps=eps)
+                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2) + eps * np.linalg.norm(x_k[jj], ord=2)**2
+            else:
+                e_k[jj] = b_temp - z_temp
+                x_k[jj] = b_temp - (e_k[jj] / np.linalg.norm(e_k[jj])) * np.maximum(np.linalg.norm(e_k[jj])-alpha, 0.)
+                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2)
 
-            f_val += 1/2*np.linalg.norm((x_k[jj] - b_temp), ord=2)
-
-        w_k = w_k_prev + 1/2*(np.eye(n_node)-W)@x_k_prev
+        w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
         
         op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, alpha, network_data, n_node))        
 
@@ -121,9 +150,10 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
         # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
         f_reldiff.append(np.abs(f_star - f_val)/f_star)
+        if printing and (ii % freq == 0 or ii == itr_num-1):
+            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
 
     return op_norm, err_opt_star, err_opt_reldiff, const_vio, f_reldiff
-
 
 """
     Helper functions: calculates inner product and norm induced by metric matrix M (which is dependent on alpha).
