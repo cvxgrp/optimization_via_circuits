@@ -39,7 +39,7 @@ def cvx_prox_fj_quad_no_cross_no_constraint(z, alpha, problem_spec, problem_data
     return x.value
 
 
-def cvx_prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, eps=1e-4):
+def cvx_prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, j, eps=1e-4):
     """
     return minimizer to sum_{i} x^T * Q_i * x + sum_{i} + b^T * x + (1/(2 * alpha)) * \|x - z\|_2^2
     """
@@ -50,10 +50,12 @@ def cvx_prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, eps=1e-
     b = problem_data['b']
 
     x = cp.Variable(vector_size)
-    f = 0
-    for j in range(n_node):
-        f += 1/2 * x @ Q[j] @ x.T + b[j].T @ x
-    f += (1/(2*alpha)) * cp.sum_squares(x - z)
+    # f = 0
+    # for j in range(n_node):
+    #     f += 1/2 * x @ Q[j] @ x.T + b[j].T @ x
+    # f += (1/(2*alpha)) * cp.sum_squares(x - z)
+
+    f = 1/2 * cp.quad_form(x, Q[j]) + b[j] @ x + (1/(2*alpha)) * cp.sum_squares(x - z)
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -64,23 +66,19 @@ def cvx_prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, eps=1e-
 def cvx_quad_no_constraint(problem_spec, problem_data):
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
-    eps = problem_spec['sc_eps']
+    Q = problem_data['Q']
     b = problem_data['b']
 
     x = cp.Variable(vector_size)
     f = 0
-
-    for jj in range(n_node) :
-        b_temp = b[jj*vector_size : (jj+1)*vector_size]
-        f += cp.norm(x - b_temp, 2)  
-        if jj in [3, 4]:
-            f += eps * cp.sum_squares(x) 
+    for j in range(n_node):
+        f += 1/2 * cp.quad_form(x, Q[j]) + b[j] @ x
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
     assert prob.status=="optimal"
     x_cvx = np.repeat(x.value, n_node).reshape(vector_size, n_node).T
-    return f.value, x_cvx
+    return f.value[0], x_cvx
 
 
 def data_generation(problem_spec) :
@@ -89,9 +87,12 @@ def data_generation(problem_spec) :
 
     Q, b = [], []
     for j in range(n_node):
-        sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
-        Q.append( np.dot( sq_Q.T, sq_Q ) )
+        # sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
         b.append( np.random.normal( loc=0, scale=1, size=(1, vector_size) ) )
+        # sq_Q = np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
+        sq_Q = 1/(np.sqrt(n_node * vector_size)) * np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
+        # b.append( np.random.uniform(low=0, high=1, size=(1, vector_size)) )
+        Q.append( np.dot( sq_Q.T, sq_Q ) )
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
@@ -125,7 +126,7 @@ def graph_generation_nodes6():
     return network_data
 
 
-def p_extra_quad_no_constraint(method_ver, problem_spec, problem_data, network_data, x_opt_star, f_star, printing=False, freq=200, params=None) :
+def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_star, f_star, printing=False, freq=200) :
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
     alpha = problem_data['alpha']
@@ -150,8 +151,8 @@ def p_extra_quad_no_constraint(method_ver, problem_spec, problem_data, network_d
         f_val = 0
         for jj in range(n_node) :
             e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])
-            x_k[jj] = cvx_prox_fj_quad_no_constraint(e_k_jj, alpha, problem_spec, problem_data, eps=1e-4)
-            f_val += 1/2 * x_k[jj] @ Q[jj] @ x_k[jj] + b[jj].T @ x_k[jj]
+            x_k[jj] = cvx_prox_fj_quad_no_constraint(e_k_jj, alpha, problem_spec, problem_data, jj, eps=1e-4)
+            f_val += 1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + b[jj] @ x_k[jj]
         w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
         
         op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, alpha, network_data, n_node))        
