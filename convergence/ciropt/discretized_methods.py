@@ -77,7 +77,7 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
         # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
-        f_reldiff.append(np.abs(f_star - f_val)/f_star)
+        f_reldiff.append(np.abs((f_star - f_val)/f_star))
         if printing and (ii % freq == 0 or ii == itr_num-1):
             print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
 
