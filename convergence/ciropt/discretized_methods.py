@@ -35,7 +35,8 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
 
     err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
 
-    x_0 = np.zeros((n_node, vector_size))
+    x_0 = np.reshape(problem_data['b'], (n_node, vector_size))
+    # x_0 = np.zeros((n_node, vector_size))    
     x_k = np.array(x_0)
     i_L_k = [np.zeros((deg, vector_size)) for deg in node_degrees]
     e_k = [np.zeros((deg, vector_size)) for deg in node_degrees]
