@@ -10,21 +10,21 @@ import cvxpy as cp
 
 
 # closd form
-def prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, j):
+def prox_fj_quad_no_constraint(z, rho, problem_spec, problem_data, jj):
     """
-    return minimizer to 1/2 * x^T * Q_i * x + b_i^T * x + (1/(2 * alpha)) * \|x - z\|_2^2
+    return minimizer to 1/2 * x^T * Q_i * x + b_i^T * x + (1/(2 * rho)) * \|x - z\|_2^2
     """
 
     Q = problem_data['Q']
     b = problem_data['b']
     vector_size = problem_spec['vector_size']
 
-    x = np.squeeze( np.dot( np.linalg.inv(Q[j] + 1/alpha * np.eye(vector_size)) , ( 1/alpha * z - b[j] ).T ) )
+    x = np.squeeze( np.dot( np.linalg.inv(Q[jj] + 1/rho * np.eye(vector_size)) , ( 1/rho * z - b[jj][0] ).T ) )
     return x
 
-def cvx_prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, j, eps=1e-4):
+def cvx_prox_fj_quad_no_constraint(z, rho, problem_spec, problem_data, j, eps=1e-4):
     """
-    return minimizer to 1/2 * x^T * Q_i * x + b_i^T * x + (1/(2 * alpha)) * \|x - z\|_2^2
+    return minimizer to 1/2 * x^T * Q_i * x + b_i^T * x + (1/(2 * rho)) * \|x - z\|_2^2
     """
 
     n_node = problem_spec['n_node']
@@ -34,7 +34,9 @@ def cvx_prox_fj_quad_no_constraint(z, alpha, problem_spec, problem_data, j, eps=
 
     x = cp.Variable(vector_size)
 
-    f = 1/2 * cp.quad_form(x, Q[j]) + b[j] @ x + (1/(2*alpha)) * cp.sum_squares(x - z)
+    f = 1/2 * cp.quad_form(x, Q[j]) 
+    f += cp.sum(cp.multiply(b[j][0], x))
+    f += (1/(2*rho)) * cp.sum_squares(x - z)
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -55,13 +57,13 @@ def min_cvx_quad_no_constraint(problem_spec, problem_data):
     x = cp.Variable(vector_size)
     f = 0
     for j in range(n_node):
-        f += 1/2 * cp.quad_form(x, Q[j]) + b[j] @ x
+        f += 1/2 * cp.quad_form(x, Q[j]) + cp.sum(cp.multiply(b[j][0], x))
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
     assert prob.status=="optimal"
     x_cvx = np.repeat(x.value, n_node).reshape(vector_size, n_node).T
-    return f.value[0], x_cvx
+    return f.value, x_cvx
 
 def min_quad_no_constraint(problem_spec, problem_data):
     """
@@ -69,20 +71,25 @@ def min_quad_no_constraint(problem_spec, problem_data):
     """
 
     n_node = problem_spec['n_node']
-    vector_size = problem_spec['vector_size']
     Q = problem_data['Q']
     b = problem_data['b']
 
-    Q_sum = 0
-    b_sum = 0
+    Q_sum = np.zeros((Q[0].shape))
+    b_sum = np.zeros((b[0].shape))
     for j in range(n_node):
         Q_sum += Q[j]
         b_sum += b[j]
-    x_star = np.squeeze( np.dot( np.linalg.inv( Q_sum ) , ( - b_sum ).T ) )
+    # x_star = np.squeeze( np.dot( np.linalg.inv( Q_sum ) , ( - b_sum[0] ).T ) )
+    x_star = np.dot( np.linalg.inv( Q_sum ) , ( - b_sum[0] ).T )
+
+    print(Q_sum)
+    print(b_sum)
+    print(x_star)
 
     f_star = 0
-    for j in range(n_node):
-        f_star += (1/2 * x_star @ Q[j] @ x_star.T + b[j] @ x_star)[0]        
+    # for j in range(n_node):
+    #     f_star += (1/2 * x_star @ Q[j] @ x_star.T + b[j] @ x_star)[0]        
+    f_star = 1/2 * x_star @ Q_sum @ x_star.T + np.dot(b_sum, x_star)
     return f_star, x_star
 
 
@@ -96,12 +103,20 @@ def data_generation(problem_spec) :
         # sq_Q = np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
         # sq_Q = 1/(np.sqrt(n_node * vector_size)) * np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
         # sq_Q = 1/(vector_size) * np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
-        sq_Q = 1/(n_node * vector_size * 20) * np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
-        Q.append( np.dot( sq_Q.T, sq_Q ) + 1/100 * np.eye(vector_size) )
         # Q.append( np.dot( sq_Q.T, sq_Q ) )
-        b.append( np.random.uniform(low=0, high=1, size=(1, vector_size)) )
         # b.append( np.random.normal( loc=0, scale=1, size=(1, vector_size) ) )
-        
+        # Q.append( np.eye(vector_size) )
+        # b.append(np.zeros((1, vector_size)))
+        b.append(np.ones((1, vector_size)))
+        sq_Q = 1/(n_node * vector_size) * np.random.uniform(low=-1, high=1, size=(vector_size, vector_size))
+        # Q.append( np.dot( sq_Q.T, sq_Q ) + np.eye(vector_size) )
+        Q.append( np.dot( sq_Q.T, sq_Q ) )
+        # Q.append( np.dot( sq_Q.T, sq_Q ) + 1/100 * np.eye(vector_size) )
+        # b.append( 1/(np.sqrt(vector_size)) * np.random.uniform(low=0, high=1, size=(1, vector_size)) )
+    
+    for j in range(n_node):
+        if j == 3 or j == 4:
+            Q[j] += 1/10 * np.eye(vector_size)
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
@@ -138,7 +153,7 @@ def graph_generation_nodes6():
 def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_star, f_star, printing=False, freq=200) :
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
-    alpha = problem_data['alpha']
+    rho = problem_data['rho']
     # eps = problem_spec['sc_eps']
 
     Q = problem_data['Q']
@@ -149,6 +164,9 @@ def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_s
     err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
 
     x_0 = np.zeros((n_node,vector_size))
+    for j in range(n_node):
+        x_0[j] = b[j]
+
     x_k = np.array(x_0)
     w_0 = np.zeros((n_node,vector_size))
     w_k = np.array(w_0)
@@ -160,12 +178,12 @@ def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_s
         f_val = 0
         for jj in range(n_node) :
             e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])
-            # x_k[jj] = cvx_prox_fj_quad_no_constraint(e_k_jj, alpha, problem_spec, problem_data, jj, eps=1e-4)
-            x_k[jj] = prox_fj_quad_no_constraint(e_k_jj, alpha, problem_spec, problem_data, jj)
+            # x_k[jj] = cvx_prox_fj_quad_no_constraint(e_k_jj, rho, problem_spec, problem_data, jj, eps=1e-4)
+            x_k[jj] = prox_fj_quad_no_constraint(e_k_jj, rho, problem_spec, problem_data, jj)
             f_val += (1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + b[jj] @ x_k[jj])[0]
         w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
         
-        op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, alpha, network_data, n_node))        
+        op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, rho, network_data, n_node))        
 
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
@@ -177,26 +195,26 @@ def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_s
     return op_norm, err_opt_star, err_opt_reldiff, const_vio, f_reldiff
 
 """
-    Helper functions: calculates inner product and norm induced by metric matrix M (which is dependent on alpha).
+    Helper functions: calculates inner product and norm induced by metric matrix M (which is dependent on rho).
 
     (1) Minner  : calculates M-inner product between (x_1, w_1) and (x_2, w_2)
     (2) Mnormsq : calculates squared M-norm of (x, w)
     (3) Mnorm   : calculates M-norm of (x, w)
 """
 
-def Minner(x1, w1, x2, w2, alpha, network_data, n_node) :
+def Minner(x1, w1, x2, w2, rho, network_data, n_node) :
     Vred = network_data['Vred']
     Sred = network_data['Sred']
 
-    norm_squared = (1/alpha)*np.sum(x1*x2) + (1/alpha)*np.sum(x1*w2) + (1/alpha)*np.sum(w1*x2)
-    u1 = (1/alpha)*Vred.T@((Vred@w1)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
-    u2 = (1/alpha)*Vred.T@((Vred@w2)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
-    norm_squared = norm_squared + alpha*np.sum(u1*u2)
+    norm_squared = (1/rho)*np.sum(x1*x2) + (1/rho)*np.sum(x1*w2) + (1/rho)*np.sum(w1*x2)
+    u1 = (1/rho)*Vred.T@((Vred@w1)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
+    u2 = (1/rho)*Vred.T@((Vred@w2)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
+    norm_squared = norm_squared + rho*np.sum(u1*u2)
 
     return norm_squared
 
-def Mnormsq(x, w, alpha, network_data, n_node) :
-    return 1/4*Minner(x, w, x, w, alpha, network_data, n_node)
+def Mnormsq(x, w, rho, network_data, n_node) :
+    return 1/4*Minner(x, w, x, w, rho, network_data, n_node)
 
-def Mnorm(x, w, alpha, network_data, n_node) :
-    return 1/2*np.sqrt(Minner(x, w, x, w, alpha, network_data, n_node))
+def Mnorm(x, w, rho, network_data, n_node) :
+    return 1/2*np.sqrt(Minner(x, w, x, w, rho, network_data, n_node))
