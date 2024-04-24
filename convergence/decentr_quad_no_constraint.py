@@ -84,20 +84,24 @@ def min_quad_no_constraint(problem_spec, problem_data):
 def data_generation(problem_spec) :
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
+    theta = problem_spec['sc_theta'] 
+    sc_perturb = problem_spec['sc_perturb'] 
 
     Q, b = [], []
     for j in range(n_node):
-        # b.append(np.ones((1, vector_size)))
-        b.append( np.random.normal(loc=0, scale=1, size=(1, vector_size)) )
+        b_normal = np.random.normal(loc=0, scale=1, size=(1, vector_size))
+        sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
+        # b.append( np.random.normal(loc=0, scale=1, size=(1, vector_size)) )
+        # sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
         # b.append( 1/(np.sqrt(vector_size)) * np.random.uniform(low=0, high=1, size=(1, vector_size)) )
         # sq_Q = 1/(n_node * vector_size) * np.random.uniform(low=-1, high=1, size=(vector_size, vector_size))
-        sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
-        # Q.append( np.dot( sq_Q.T, sq_Q ) + np.eye(vector_size) )
-        Q.append( np.dot( sq_Q.T, sq_Q ) )
+        Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
+        b.append( 1/(n_node * vector_size) * b_normal )
     
-    for j in range(n_node):
-        if j == 3 or j == 4:
-            Q[j] += np.eye(vector_size)
+    if sc_perturb:
+        for j in range(n_node):
+            if j == 3 or j == 4:
+                Q[j] += theta * np.eye(vector_size)
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
