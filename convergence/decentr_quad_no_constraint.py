@@ -10,16 +10,11 @@ import cvxpy as cp
 
 
 # closd form
-def prox_fj_quad_no_constraint(z, rho, problem_spec, problem_data, jj):
+def prox_fj_quad_no_constraint(z, rho, Qj, bj, vector_size):
     """
     return minimizer to 1/2 * x^T * Q_i * x + b_i^T * x + (1/(2 * rho)) * \|x - z\|_2^2
     """
-
-    Q = problem_data['Q']
-    b = problem_data['b']
-    vector_size = problem_spec['vector_size']
-
-    x = np.squeeze( np.dot( np.linalg.inv(Q[jj] + 1/rho * np.eye(vector_size)) , ( 1/rho * z - b[jj][0] ).T ) )
+    x = np.squeeze( np.dot( np.linalg.inv(Qj + 1/rho * np.eye(vector_size)) , ( 1/rho * z - bj[0] ).T ) )
     return x
 
 def cvx_prox_fj_quad_no_constraint(z, rho, problem_spec, problem_data, j, eps=1e-4):
@@ -62,8 +57,8 @@ def min_cvx_quad_no_constraint(problem_spec, problem_data):
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
     assert prob.status=="optimal"
-    x_cvx = np.repeat(x.value, n_node).reshape(vector_size, n_node).T
-    return f.value, x_cvx
+    # x_cvx = np.repeat(x.value, n_node).reshape(vector_size, n_node).T
+    return f.value, x.value
 
 def min_quad_no_constraint(problem_spec, problem_data):
     """
@@ -79,17 +74,10 @@ def min_quad_no_constraint(problem_spec, problem_data):
     for j in range(n_node):
         Q_sum += Q[j]
         b_sum += b[j]
-    # x_star = np.squeeze( np.dot( np.linalg.inv( Q_sum ) , ( - b_sum[0] ).T ) )
     x_star = np.dot( np.linalg.inv( Q_sum ) , ( - b_sum[0] ).T )
 
-    print(Q_sum)
-    print(b_sum)
-    print(x_star)
-
-    f_star = 0
-    # for j in range(n_node):
-    #     f_star += (1/2 * x_star @ Q[j] @ x_star.T + b[j] @ x_star)[0]        
-    f_star = 1/2 * x_star @ Q_sum @ x_star.T + np.dot(b_sum, x_star)
+    f_star = 0 
+    f_star = 1/2 * x_star @ Q_sum @ x_star.T + np.dot(b_sum[0], x_star)
     return f_star, x_star
 
 
@@ -99,24 +87,17 @@ def data_generation(problem_spec) :
 
     Q, b = [], []
     for j in range(n_node):
-        # sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
-        # sq_Q = np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
-        # sq_Q = 1/(np.sqrt(n_node * vector_size)) * np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
-        # sq_Q = 1/(vector_size) * np.random.uniform(low=0, high=1, size=(vector_size, vector_size))
-        # Q.append( np.dot( sq_Q.T, sq_Q ) )
-        # b.append( np.random.normal( loc=0, scale=1, size=(1, vector_size) ) )
-        # Q.append( np.eye(vector_size) )
-        # b.append(np.zeros((1, vector_size)))
-        b.append(np.ones((1, vector_size)))
-        sq_Q = 1/(n_node * vector_size) * np.random.uniform(low=-1, high=1, size=(vector_size, vector_size))
+        # b.append(np.ones((1, vector_size)))
+        b.append( np.random.normal(loc=0, scale=1, size=(1, vector_size)) )
+        # b.append( 1/(np.sqrt(vector_size)) * np.random.uniform(low=0, high=1, size=(1, vector_size)) )
+        # sq_Q = 1/(n_node * vector_size) * np.random.uniform(low=-1, high=1, size=(vector_size, vector_size))
+        sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
         # Q.append( np.dot( sq_Q.T, sq_Q ) + np.eye(vector_size) )
         Q.append( np.dot( sq_Q.T, sq_Q ) )
-        # Q.append( np.dot( sq_Q.T, sq_Q ) + 1/100 * np.eye(vector_size) )
-        # b.append( 1/(np.sqrt(vector_size)) * np.random.uniform(low=0, high=1, size=(1, vector_size)) )
     
     for j in range(n_node):
         if j == 3 or j == 4:
-            Q[j] += 1/10 * np.eye(vector_size)
+            Q[j] += np.eye(vector_size)
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
@@ -177,10 +158,14 @@ def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_s
         w_k_prev = np.array(w_k)
         f_val = 0
         for jj in range(n_node) :
+            Q_temp = Q[jj]
+            b_temp = b[jj]
             e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])
             # x_k[jj] = cvx_prox_fj_quad_no_constraint(e_k_jj, rho, problem_spec, problem_data, jj, eps=1e-4)
-            x_k[jj] = prox_fj_quad_no_constraint(e_k_jj, rho, problem_spec, problem_data, jj)
-            f_val += (1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + b[jj] @ x_k[jj])[0]
+            # x_k[jj] = prox_fj_quad_no_constraint(e_k_jj, rho, problem_spec, problem_data, jj)
+            x_k[jj] = prox_fj_quad_no_constraint(e_k_jj, rho, Q_temp, b_temp, vector_size)
+            # f_val += (1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + b[jj] @ x_k[jj])[0]
+            f_val += 1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + np.dot(b[jj][0], x_k[jj])
         w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
         
         op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, rho, network_data, n_node))        
@@ -188,7 +173,7 @@ def p_extra_quad_no_constraint(problem_spec, problem_data, network_data, x_opt_s
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
         # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
-        f_reldiff.append(np.abs((f_star - f_val)/f_star))
+        f_reldiff.append(np.abs((f_val - f_star)/f_star))
         if printing and (ii % freq == 0 or ii == itr_num-1):
             print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
 

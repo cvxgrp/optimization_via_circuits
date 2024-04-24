@@ -8,7 +8,7 @@ import cvxpy as cp
 
 
 def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star, 
-          prox_operators, fi_operators, params=None, printing=False, freq=50):
+          prox_operators, fi_operators, params=None, printing=False, sc_index_set = None, freq=50):
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
     
@@ -65,7 +65,8 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
 
         for j in range(n_node):
             for l_idx, l in enumerate(adjacency[j]):
-                if alg_type == "cir_dadmm_c" and ((j == 3 and l==4) or (j==4 and l==3)):
+                # if alg_type == "cir_dadmm_c" and ((j == 3 and l==4) or (j==4 and l==3)):
+                if alg_type == "cir_dadmm_c" and {j,l}.issubset(sc_index_set):
                     j_idx = adjacency[l].index(j)
                     e_k[j][l_idx] = e_k_prev[j][l_idx] - (h / Capacitance) * (i_L_k_prev[j][l_idx] + i_L_k_prev[l][j_idx] + (2 * e_k_prev[j][l_idx] - x_k[j] - x_k[l])/R)
                 else:
@@ -73,15 +74,16 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
         for j in range(n_node):
             i_L_k[j] = i_L_k_prev[j] + step_size * ( e_k[j] - x_k[j])
             
-        if alg_type == "cir_dadmm_l":
-            i_Lextra_k = i_Lextra_k_prev + (h / L_extra) * (x_k[3] - x_k[4])
+        # if alg_type == "cir_dadmm_l":
+        #     i_Lextra_k = i_Lextra_k_prev + (h / L_extra) * (x_k[3] - x_k[4])
         
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
         # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
         f_reldiff.append(np.abs((f_val - f_star)/f_star))
         if printing and (ii % freq == 0 or ii == itr_num-1):
-            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
+            # print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
+            print(f"{ii=}, {f_reldiff[-1]=}")
 
     return err_opt_star, err_opt_reldiff, const_vio, f_reldiff
 
