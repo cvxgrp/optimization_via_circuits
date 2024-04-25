@@ -99,11 +99,14 @@ def data_generation(problem_spec) :
         b.append( 1/(2 * n_node * vector_size) * b_normal )
         # Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
         # b.append( 1/(n_node * vector_size) * b_normal )
+        _, s, _ = np.linalg.svd(np.dot( sq_Q.T, sq_Q ))
+        print([np.max(s), np.min(s)])
     
     if sc_perturb:
         for j in range(n_node):
             if j == 3 or j == 4:
-                Q[j] += theta * np.eye(vector_size)
+                # Q[j] += theta * np.eye(vector_size)
+                Q[j] = 50 * Q[j]
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
