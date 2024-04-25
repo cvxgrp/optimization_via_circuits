@@ -19,7 +19,6 @@ def pg_extra_line2(mu, L_smooth, R, R_12, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        # h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
         h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
     else:
         # Ciropt mode
@@ -54,22 +53,23 @@ def pg_extra_line2(mu, L_smooth, R, R_12, params=None):
     y_f2_1, f2_1 = f2.oracle(x2_1)
     y_h1_1, h1_1 = h1.oracle(x1_1)
     y_h2_1, h2_1 = h2.oracle(x2_1)
-    problem.add_constraint(Constraint((y_f1_1 + y_f2_1 + y_h1_1 + y_h2_1) ** 2, "equality"))
+    # problem.add_constraint(Constraint((y_f1_1 + y_f2_1 + y_h1_1 + y_h2_1) ** 2, "equality"))
     # y_h2_1 = - y_f1_1 - y_f2_1 - y_h1_1
     # _, h2_1 = h2.oracle(x2_1)
     
-    i_L_12_1 = - y_f1_1 - y_h1_1 - 1/R_12 * (x1_1 - x2_1)
-    i_L_21_1 = - i_L_12_1
-    w1_1 = R * i_L_12_1
-    w2_1 = R * i_L_21_1
-
+    # i_L_12_1 = - y_f1_1 - y_h1_1 - 1/R_12 * (x1_1 - x2_1) hold only in continuous setup
+    w1_1 =  problem.set_initial_point()
+    w2_1 = - w1_1
+    i_L_12_1 = 1/R * w1_1    
+    i_L_21_1 = - 1/R * w2_1
+    
     # update
     e1_1 = R/R_12 * x2_1 + ( 1 - R/R_12 ) * x1_1 - R * y_h1_1 - w1_1
     e2_1 = R/R_12 * x1_1 + ( 1 - R/R_12 ) * x2_1 - R * y_h2_1 - w2_1
     x1_2, y_f1_2, f1_2 = proximal_step(e1_1, f1, R)
     x2_2, y_f2_2, f2_2 = proximal_step(e2_1, f2, R)
     w1_2 = w1_1 + h * R/R_12 * (x1_1 - x2_1)
-    w2_2 = w2_1 + h * R/R_12 * (x2_1 - x1_1)  # w2_2 = - w2_1  
+    w2_2 = w2_1 + h * R/R_12 * (x2_1 - x1_1)    
     
     i_L_12_2 = 1/R * w1_2
     i_L_21_2 = 1/R * w2_2
@@ -85,20 +85,69 @@ def pg_extra_line2(mu, L_smooth, R, R_12, params=None):
     # E_1 = (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 
     # E_2 = (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2   
     
-    E_1 = gamma * (x1_1 - x2_1)**2 + (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 
-    E_2 = gamma * (x1_2 - x2_2)**2 + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2   
+    E_1 = gamma * ( (x1_1 - x2_1)**2 ) \
+        + (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_1 - i_L_21_star) ** 2 
+    E_2 = gamma * ( (x1_2 - x2_2)**2 ) \
+        + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_2 - i_L_21_star) ** 2  
+
+    # E_1 = gamma * ( (x1_1 - x_star)**2 + (x2_1 - x_star)**2 ) \
+    #     + (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_1 - i_L_21_star) ** 2 
+    # E_2 = gamma * ( (x1_2 - x_star)**2 + (x2_2 - x_star)**2 ) \
+    #     + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_2 - i_L_21_star) ** 2  
+
+    # E_1 = gamma * ( (x1_1 + x2_1 - 2 * x_star)**2 ) \
+    #     + (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_1 - i_L_21_star) ** 2 
+    # E_2 = gamma * ( (x1_2 + x2_2 - 2 * x_star)**2 ) \
+    #     + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_2 - i_L_21_star) ** 2 
+
+    # E_1 = gamma * ( (y_f1_1 - y_f1_star)**2 + (y_f2_1 - y_f2_star)**2 ) \
+    #     + (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_1 - i_L_21_star) ** 2 
+    # E_2 = gamma * ( (y_f1_2 - y_f1_star)**2 + (y_f2_2 - y_f2_star)**2 ) \
+    #     + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_2 - i_L_21_star) ** 2  
+
+    # E_1 = (L_12/2) * (i_L_12_1 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_1 - i_L_21_star) ** 2 
+    # E_2 = (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2 + (L_12/2) * (i_L_21_2 - i_L_21_star) ** 2  
+
+    # Delta_2 = d * 1/R_12 * ((x2_2 - x1_2)**2) \
+    #           + b * ( f1_2 - f1_star - y_f1_star * (x1_2 - x_star) \
+    #                 + f2_2 - f2_star - y_f2_star * (x2_2 - x_star)\
+    #                 + h1_1 - h1_star - y_h1_star * (x1_1 - x_star)\
+    #                 + h2_1 - h2_star - y_h2_star * (x2_1 - x_star))
 
     # Delta_2 = d * 1/R_12 * ((x2_1 - x1_1)**2) \
-    #           + b * ( f1_1 - f1_star - y_f1_star * (x1_2 - x_star) \
-    #                 + f2_1 - f2_star - y_f2_star * (x2_2 - x_star)\
-    #                 + h1_1 - h1_star - y_h1_star * (x1_2 - x_star)\
-    #                 + h2_1 - h2_star - y_h2_star * (x2_2 - x_star))
+    #           + b * ( f1_2 - f1_star - y_f1_star * (x1_2 - x_star) \
+    #                 + f2_2 - f2_star - y_f2_star * (x2_2 - x_star)\
+    #                 + h1_1 - h1_star - y_h1_star * (x1_1 - x_star)\
+    #                 + h2_1 - h2_star - y_h2_star * (x,2_1 - x_star))
+    
+    # Delta_2 = d * 1/R_12 * ((x2_1 - x1_1)**2) \
+    #           + b * ( ( y_f1_2 - y_f1_star ) * (x1_2 - x_star) \
+    #                 + ( y_f2_2 - y_f2_star ) * (x2_2 - x_star) \
+    #                 + ( y_h1_1 - y_h1_star ) * (x1_1 - x_star) \
+    #                 + ( y_h2_1 - y_h2_star ) * (x2_1 - x_star) )
 
-    Delta_2 = d * 1/R_12 * ((x2_1 - x1_1)**2) \
-              + b * ( f1_2 - f1_star \
-                    + f2_2 - f2_star \
-                    + h1_1 - h1_star \
-                    + h2_1 - h2_star )
+    Delta_2 = d * ( (x1_2 - x1_1) - (x2_2 - x2_1) )**2 \
+              + b * ( ( y_f1_2 - y_f2_2 ) * (x1_2 - x2_2) \
+                    + ( y_h1_1 - y_h2_1 ) * (x1_1 - x2_1)  )
+
+    # Delta_2 = b * ( f1_2 - f1_star - y_f1_star * (x1_2 - x_star) \
+    #             + f2_2 - f2_star - y_f2_star * (x2_2 - x_star) ) \
+    #         + d *( h1_1 - h1_star - y_h1_star * (x1_1 - x_star)\
+    #             + h2_1 - h2_star - y_h2_star * (x2_1 - x_star))
+
+    # Delta_2 = b * ( f1_1 - f1_star - y_f1_star * (x1_1 - x_star) \
+    #             + f2_1 - f2_star - y_f2_star * (x2_1 - x_star) ) \
+    #         + d *( h1_1 - h1_star - y_h1_star * (x1_1 - x_star)\
+    #             + h2_1 - h2_star - y_h2_star * (x2_1 - x_star))
+
+    # Delta_2 = d * 1/R_12 * ((x2_1 - x1_1)**2) \
+    #           + b * ( f1_2 - f1_star \
+    #                 + f2_2 - f2_star \
+    #                 + h1_1 - h1_star \
+    #                 + h2_1 - h2_star )
+
+    # Delta_2 = b * ( f1_2 - f1_star + f2_2 - f2_star ) \
+    #             + d *( h1_1 - h1_star + h2_1 - h2_star )
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem

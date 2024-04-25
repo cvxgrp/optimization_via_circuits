@@ -119,6 +119,7 @@ def graph_generation_nodes6():
         W[j-1,i-1] = 1/(np.maximum(G.degree(j), G.degree(i))+1)
     for i in range(n_node) :
         W[i,i] = 1 - np.sum(W[i])
+    # W = 1/2 * ( W + np.eye(n_node) )
     [_, S, V] = np.linalg.svd((1/2)*(np.eye(W.shape[0])-W))
     Vred = V[0:n_node-1]
     Sred = S[0:n_node-1]

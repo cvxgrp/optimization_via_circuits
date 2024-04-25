@@ -106,7 +106,9 @@ def data_generation(problem_spec) :
         for j in range(n_node):
             if j == 3 or j == 4:
                 # Q[j] += theta * np.eye(vector_size)
-                Q[j] = 50 * Q[j]
+                # Q[j] = 50 * Q[j]
+                sq_Q = np.random.normal(loc=1, scale=1, size=(vector_size, vector_size))
+                Q[j] += 1/(2*vector_size) * np.dot( sq_Q.T, sq_Q )
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
