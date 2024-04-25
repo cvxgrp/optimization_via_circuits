@@ -12,3 +12,4 @@ from ciropt.decentralized_algorithms import *
 from ciropt.paper_example_circuits import *
 from ciropt.sympy_to_solvers import *
 from ciropt.extra_methods import *
+from ciropt.pg_extra import *

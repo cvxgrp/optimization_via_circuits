@@ -95,8 +95,10 @@ def data_generation(problem_spec) :
         # sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
         # b.append( 1/(np.sqrt(vector_size)) * np.random.uniform(low=0, high=1, size=(1, vector_size)) )
         # sq_Q = 1/(n_node * vector_size) * np.random.uniform(low=-1, high=1, size=(vector_size, vector_size))
-        Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
-        b.append( 1/(n_node * vector_size) * b_normal )
+        Q.append( 1/(2 * n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
+        b.append( 1/(2 * n_node * vector_size) * b_normal )
+        # Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
+        # b.append( 1/(n_node * vector_size) * b_normal )
     
     if sc_perturb:
         for j in range(n_node):
