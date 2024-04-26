@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 import cvxpy as cp
+from scipy.stats import ortho_group
 
 
 
@@ -100,15 +101,20 @@ def data_generation(problem_spec) :
         # Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
         # b.append( 1/(n_node * vector_size) * b_normal )
         _, s, _ = np.linalg.svd(np.dot( sq_Q.T, sq_Q ))
-        print([np.max(s), np.min(s)])
+        # print([np.max(s), np.min(s)])
     
     if sc_perturb:
         for j in range(n_node):
             if j == 3 or j == 4:
                 # Q[j] += theta * np.eye(vector_size)
                 # Q[j] = 50 * Q[j]
-                sq_Q = np.random.normal(loc=1, scale=1, size=(vector_size, vector_size))
-                Q[j] += 1/(2*vector_size) * np.dot( sq_Q.T, sq_Q )
+                # sq_Q = np.random.normal(loc=2, scale=1, size=(vector_size, vector_size))
+                # Q[j] += 1/(2*vector_size) * np.dot( sq_Q.T, sq_Q )
+                # Q[j] = 1/(2 * n_node * vector_size) * np.dot( sq_Q.T, sq_Q )
+                D = np.diag(np.random.normal(1, 1, vector_size))
+                U = ortho_group.rvs(dim=vector_size)
+                sq_Q = np.dot(D,U)
+                Q[j] = np.dot( sq_Q.T, sq_Q )
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
