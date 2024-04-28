@@ -18,12 +18,12 @@ def prox_fj_geom_mean(z, rho, b):
     x = b - (e / np.linalg.norm(e)) * np.maximum(np.linalg.norm(e) - rho, 0.)
     return x
 
-def prox_fj_geom_mean_sc(z, rho, b, c, theta=1e-4):
+def prox_fj_geom_mean_sc(z, rho, b, c, mu=1e-4):
     """
-    return minimizer to \|x - b\|_2 + theta * \|x - c\|_2^2 + (1/(2 * rho)) * \|x - z\|_2^2
+    return minimizer to \|x - b\|_2 + mu * \|x - c\|_2^2 + (1/(2 * rho)) * \|x - z\|_2^2
     """
-    new_z = 1/(1 + 2 * rho * theta) * ( z + 2 * rho * theta * c)
-    new_rho = rho/(1 + 2 * rho * theta)
+    new_z = 1/(1 + 2 * rho * mu) * ( z + 2 * rho * mu * c)
+    new_rho = rho/(1 + 2 * rho * mu)
     # e = b - new_z
     # x = b - (e / np.linalg.norm(e)) * np.maximum(np.linalg.norm(e) - new_rho, 0.)
     x = prox_fj_geom_mean(new_z, new_rho, b)
@@ -42,12 +42,12 @@ def cvx_prox_fj_geom_mean(z, rho, b, vector_size):
     return x.value
 
 
-def cvx_prox_fj_geom_mean_sc(z, rho, b, c, vector_size, theta=1e-4):
+def cvx_prox_fj_geom_mean_sc(z, rho, b, c, vector_size, mu=1e-4):
     """
-    return minimizer to \|x - b\|_2 + theta * \|x - c\|_2^2 + (1/(2 * rho)) * \|x - z\|_2^2
+    return minimizer to \|x - b\|_2 + mu * \|x - c\|_2^2 + (1/(2 * rho)) * \|x - z\|_2^2
     """
     x = cp.Variable(vector_size)
-    f = cp.norm(x - b, 2)  + theta * cp.sum_squares(x-c) + (1/(2*rho)) * cp.sum_squares(x - z)
+    f = cp.norm(x - b, 2)  + mu * cp.sum_squares(x-c) + (1/(2*rho)) * cp.sum_squares(x - z)
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -58,7 +58,7 @@ def cvx_prox_fj_geom_mean_sc(z, rho, b, c, vector_size, theta=1e-4):
 def cvx_geom_median(problem_spec, problem_data):
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
-    theta = problem_spec['sc_theta']
+    mu = problem_spec['sc_mu']
     b = problem_data['b']
     c = problem_data['c']
 
@@ -70,7 +70,7 @@ def cvx_geom_median(problem_spec, problem_data):
         c_temp = c[jj*vector_size : (jj+1)*vector_size]
         f += cp.norm(x - b_temp, 2)  
         if jj in [3, 4]:
-            f += theta * cp.sum_squares(x-c_temp) 
+            f += mu * cp.sum_squares(x-c_temp) 
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -119,6 +119,7 @@ def graph_generation_nodes6():
         W[j-1,i-1] = 1/(np.maximum(G.degree(j), G.degree(i))+1)
     for i in range(n_node) :
         W[i,i] = 1 - np.sum(W[i])
+    # W = 1/2 * ( W + np.eye(n_node) )
     [_, S, V] = np.linalg.svd((1/2)*(np.eye(W.shape[0])-W))
     Vred = V[0:n_node-1]
     Sred = S[0:n_node-1]
@@ -131,7 +132,7 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
     rho = problem_data['rho']
-    theta = problem_spec['sc_theta']
+    mu = problem_spec['sc_mu']
 
     b = problem_data['b']
     c = problem_data['c']
@@ -141,9 +142,11 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
 
     x_0 = np.reshape(b, (n_node, vector_size))
+    # x_0 = np.zeros((n_node,vector_size))
     x_k = np.array(x_0)
     w_0 = np.zeros((n_node,vector_size))
     w_k = np.array(w_0)
+    # b_stack = np.reshape(np.repeat(b, n_node), (n_sensor, n_node))
 
     e_k = np.array(x_0)
 
@@ -156,9 +159,9 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
             c_temp = c[jj*vector_size : (jj+1)*vector_size]
             z_temp = (W[jj]@x_k_prev - w_k_prev[jj])
             if jj in [3, 4]:
-                x_k[jj] = prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, theta=theta)
-                # x_k[jj] = cvx_prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, vector_size, theta=theta)
-                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2) + theta * np.linalg.norm(x_k[jj] - c_temp, ord=2)**2
+                x_k[jj] = prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, mu=mu)
+                # x_k[jj] = cvx_prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, vector_size, mu=mu)
+                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2) + mu * np.linalg.norm(x_k[jj] - c_temp, ord=2)**2
             else:
                 e_k[jj] = b_temp - z_temp
                 x_k[jj] = prox_fj_geom_mean(z_temp, rho, b_temp)

@@ -284,7 +284,7 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
   
-    def solve_ipopt_qcqp(self, verbose=True, init_values=None, x0=None, bounds=None, debug=False, **kwargs):
+    def solve_ipopt_qcqp(self, verbose=True, init_values=None, x0=None, bounds=None, extra_dim=150, debug=False, **kwargs):
         """
         Use ipopt to find proofs and formulate problem explicitly as QCQP: 
             introduce the dummy variables for the discretization parameters
@@ -305,7 +305,7 @@ class CircuitOpt(object):
         v_size = len(v_names)
         x_size = len(v_names) + total_I_size + total_eq_size + dim_G * (dim_G + 1) // 2
         opti = ca.Opti()
-        var_x2 = opti.variable(x_size + 150, 1)
+        var_x2 = opti.variable(x_size + extra_dim, 1)
         var_x = var_x2[:x_size]
         opti.subject_to(var_x[0] == 1)
         ca_vars = {"x": var_x}
