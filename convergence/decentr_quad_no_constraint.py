@@ -96,8 +96,8 @@ def data_generation(problem_spec) :
         # sq_Q = np.random.normal(loc=0, scale=1, size=(vector_size, vector_size))
         # b.append( 1/(np.sqrt(vector_size)) * np.random.uniform(low=0, high=1, size=(1, vector_size)) )
         # sq_Q = 1/(n_node * vector_size) * np.random.uniform(low=-1, high=1, size=(vector_size, vector_size))
-        Q.append( 1/(2 * n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
-        b.append( 1/(2 * n_node * vector_size) * b_normal )
+        Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
+        b.append( 1/(n_node * vector_size) * b_normal )
         # Q.append( 1/(n_node * vector_size) * np.dot( sq_Q.T, sq_Q ) )
         # b.append( 1/(n_node * vector_size) * b_normal )
         _, s, _ = np.linalg.svd(np.dot( sq_Q.T, sq_Q ))
@@ -107,14 +107,17 @@ def data_generation(problem_spec) :
         for j in range(n_node):
             if j == 3 or j == 4:
                 # Q[j] += theta * np.eye(vector_size)
-                # Q[j] = 50 * Q[j]
+                Q[j] = 50 * Q[j]
                 # sq_Q = np.random.normal(loc=2, scale=1, size=(vector_size, vector_size))
                 # Q[j] += 1/(2*vector_size) * np.dot( sq_Q.T, sq_Q )
                 # Q[j] = 1/(2 * n_node * vector_size) * np.dot( sq_Q.T, sq_Q )
-                D = np.diag(np.random.normal(0.5, 1, vector_size))
-                U = ortho_group.rvs(dim=vector_size)
-                sq_Q = np.dot(D,U)
-                Q[j] = np.dot( sq_Q.T, sq_Q )
+                # D = np.diag(np.random.normal(1, 1, vector_size))
+                # U = ortho_group.rvs(dim=vector_size)
+                # sq_Q = np.dot(D,U)
+                # Q[j] = np.dot( sq_Q.T, sq_Q )
+                # D = np.diag(np.abs(np.diag(D)))                 
+                # D = np.diag( np.where(np.diag(D) < 0, 0, np.diag(D)))
+                # Q[j] = np.dot( U.T, np.dot(D,U) )
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
