@@ -110,18 +110,18 @@ def data_generation(problem_spec) :
                 # Q[j] = 50 * Q[j]
                 # sq_Q = np.random.normal(loc=2, scale=1, size=(vector_size, vector_size))
                 # D = np.diag(np.random.uniform(low=0, high=2, size=vector_size))
-                D = np.diag(np.random.uniform(low=2, high=4, size=vector_size))
-                # D = np.diag(np.random.normal(1, 1, vector_size))
+                # D = np.diag(np.random.uniform(low=2, high=4, size=vector_size))
+                # D = np.diag(np.random.normal(3, 1, vector_size))
                 # D = np.diag(np.random.normal(10, 1, vector_size))
                 # D = np.diag(np.random.normal(3, 1, vector_size))
-                # D = np.diag(np.random.normal(0.5, 1, vector_size))
+                D = np.diag(np.random.normal(np.sqrt(3), 1, vector_size))
                 U = ortho_group.rvs(dim=vector_size)
-                # sq_Q = np.dot(D,U)
-                # Q[j] = np.dot( sq_Q.T, sq_Q )
+                sq_Q = np.dot(D,U)
+                Q[j] = np.dot( sq_Q.T, sq_Q )
                 # D = np.diag(np.abs(np.diag(D)))                 
                 # D = np.diag( np.where(np.diag(D) < 0, 0, np.diag(D)))
                 # print(D)
-                Q[j] = np.dot( U.T, np.dot(D,U) )
+                # Q[j] = np.dot( U.T, np.dot(D,U) )
 
     problem_data = {'Q' : Q, 'b' : b}
     return problem_data
