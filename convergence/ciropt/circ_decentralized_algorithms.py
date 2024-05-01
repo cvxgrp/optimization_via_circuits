@@ -25,14 +25,14 @@ def dadmm_C_all_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, b, d = params["h"], params["b"], params["d"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+        h, b, d = problem.h, problem.b, problem.d
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -51,7 +51,6 @@ def dadmm_C_all_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
     # when f is not differentiable
     problem.add_constraint(Constraint((y1_star + y2_star + y3_star + y4_star + y5_star + y6_star - y_star) ** 2, "equality"))
 
-    # XX relations for y's should be fixed
     y1_12_star = problem.set_initial_point()
     y1_13_star = y1_star - y1_12_star
     y2_23_star = problem.set_initial_point()
@@ -104,29 +103,39 @@ def dadmm_C_all_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
     e_45_2 = e_45_1 - ( h / Capacitance) * (i_L_45_1 + i_L_54_1 + (2 * e_45_1 - x4_2 - x5_2) / R)
     e_46_2 = e_46_1 - ( h / Capacitance) * (i_L_46_1 + i_L_64_1 + (2 * e_46_1 - x4_2 - x6_2) / R)
     i_L_12_2 = i_L_12_1 + ( h / Inductance) * (e_12_2 - x1_2)      
+    i_L_21_2 = i_L_21_1 + ( h / Inductance) * (e_12_2 - x2_2)
     i_L_13_2 = i_L_13_1 + ( h / Inductance) * (e_13_2 - x1_2)
+    i_L_31_2 = i_L_31_1 + ( h / Inductance) * (e_13_2 - x3_2)
     i_L_23_2 = i_L_23_1 + ( h / Inductance) * (e_23_2 - x2_2)
+    i_L_32_2 = i_L_32_1 + ( h / Inductance) * (e_23_2 - x3_2)
     i_L_24_2 = i_L_24_1 + ( h / Inductance) * (e_24_2 - x2_2)
+    i_L_42_2 = i_L_42_1 + ( h / Inductance) * (e_24_2 - x4_2)
     i_L_34_2 = i_L_34_1 + ( h / Inductance) * (e_34_2 - x3_2)
+    i_L_43_2 = i_L_43_1 + ( h / Inductance) * (e_34_2 - x4_2)
     i_L_45_2 = i_L_45_1 + ( h / Inductance) * (e_45_2 - x4_2)
     i_L_54_2 = i_L_54_1 + ( h / Inductance) * (e_45_2 - x5_2)
     i_L_46_2 = i_L_46_1 + ( h / Inductance) * (e_46_2 - x4_2)
+    i_L_64_2 = i_L_64_1 + ( h / Inductance) * (e_46_2 - x6_2)
     
-    # energy of two inductors on each net is twice the energy on one inductor XX E_1 should be fixed
-    E_1 = Inductance * (i_L_12_1 - y1_12_star) ** 2 + Inductance * (i_L_13_1 - y1_13_star) ** 2 \
-            + Inductance * (i_L_23_1 - y2_23_star) ** 2 + Inductance * (i_L_24_1 - y2_24_star) ** 2 \
-            + Inductance * (i_L_34_1 - y3_34_star) ** 2 \
+    # energy of two inductors on each net is twice the energy on one inductor XX E_1 should check sign
+    E_1 = (Inductance/2) * (i_L_12_1 - y1_12_star) ** 2 + (Inductance/2) * (i_L_21_1 + y1_12_star) ** 2 \
+            + (Inductance/2) * (i_L_13_1 - y1_13_star) ** 2 + (Inductance/2) * (i_L_31_1 + y1_13_star) ** 2 \
+            + (Inductance/2) * (i_L_23_1 - y2_23_star) ** 2 + (Inductance/2) * (i_L_32_1 + y2_23_star) ** 2 \
+            + (Inductance/2) * (i_L_24_1 - y2_24_star) ** 2 + (Inductance/2) * (i_L_42_1 + y2_24_star) ** 2\
+            + (Inductance/2) * (i_L_34_1 - y3_34_star) ** 2 + (Inductance/2) * (i_L_43_1 + y3_34_star) ** 2\
             + (Inductance/2) * (i_L_45_1 + y5_star) ** 2 + (Inductance/2) * (i_L_54_1 - y5_star) ** 2 \
-            + Inductance * (i_L_46_1 + y6_star) ** 2 \
+            + (Inductance/2) * (i_L_46_1 + y6_star) ** 2 + (Inductance/2) * (i_L_64_1 - y6_star) ** 2 \
             + (Capacitance / 2) * (e_12_1 - x_star) ** 2 + (Capacitance / 2) * (e_13_1 - x_star) ** 2 \
             + (Capacitance / 2) * (e_23_1 - x_star) ** 2 + (Capacitance / 2) * (e_24_1 - x_star) ** 2 \
             + (Capacitance / 2) * (e_34_1 - x_star) ** 2 + (Capacitance / 2) * (e_45_1 - x_star) ** 2 \
             + (Capacitance / 2) * (e_46_1 - x_star) ** 2
-    E_2 = Inductance * (i_L_12_2 - y1_12_star) ** 2 + Inductance * (i_L_13_2 - y1_13_star) ** 2 \
-            + Inductance * (i_L_23_2 - y2_23_star) ** 2 + Inductance * (i_L_24_2 - y2_24_star) ** 2 \
-            + Inductance * (i_L_34_2 - y3_34_star) ** 2 \
+    E_2 = (Inductance/2) * (i_L_12_2 - y1_12_star) ** 2 + (Inductance/2) * (i_L_21_2 + y1_12_star) ** 2 \
+            + (Inductance/2) * (i_L_13_2 - y1_13_star) ** 2 + (Inductance/2) * (i_L_31_2 + y1_13_star) ** 2 \
+            + (Inductance/2) * (i_L_23_2 - y2_23_star) ** 2 + (Inductance/2) * (i_L_32_2 + y2_23_star) ** 2 \
+            + (Inductance/2) * (i_L_24_2 - y2_24_star) ** 2 + (Inductance/2) * (i_L_42_2 + y2_24_star) ** 2\
+            + (Inductance/2) * (i_L_34_2 - y3_34_star) ** 2 + (Inductance/2) * (i_L_43_2 + y3_34_star) ** 2\
             + (Inductance/2) * (i_L_45_2 + y5_star) ** 2 + (Inductance/2) * (i_L_54_2 - y5_star) ** 2 \
-            + Inductance * (i_L_46_2 + y6_star) ** 2 \
+            + (Inductance/2) * (i_L_46_2 + y6_star) ** 2 + (Inductance/2) * (i_L_64_2 - y6_star) ** 2 \
             + (Capacitance / 2) * (e_12_2 - x_star) ** 2 + (Capacitance / 2) * (e_13_2 - x_star) ** 2 \
             + (Capacitance / 2) * (e_23_2 - x_star) ** 2 + (Capacitance / 2) * (e_24_2 - x_star) ** 2 \
             + (Capacitance / 2) * (e_34_2 - x_star) ** 2 + (Capacitance / 2) * (e_45_2 - x_star) ** 2 \
@@ -145,13 +154,13 @@ def dadmm_C_all_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
     Delta_2 += d * ( (1/R) * ((e_24_2 - x2_2)**2 + (e_24_2 - x4_2)**2) \
                     + (1/R) * ((e_34_2 - x3_2)**2 + (e_24_2 - x4_2)**2) )  
     Delta_2 += d * ( (1/R) * ((e_45_2 - x5_2)**2 + (e_45_2 - x4_2)**2)  \
-                    + (1/R) * ((e_46_2 - x4_2)**2 + (e_46_2 - x6_2)**2) ) \
-              + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
+                    + (1/R) * ((e_46_2 - x4_2)**2 + (e_46_2 - x6_2)**2) ) 
+    Delta_2 += b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
                     + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
                     + f3_2 - f3_star - y3_star * (x3_2 - x_star) \
                     + f4_2 - f4_star - y4_star * (x4_2 - x_star) \
                     + f5_2 - f5_star - y5_star * (x5_2 - x_star) \
-                    + f6_2 - f6_star - y6_star * (x6_2 - x_star))
+                    + f6_2 - f6_star - y6_star * (x6_2 - x_star) )
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
