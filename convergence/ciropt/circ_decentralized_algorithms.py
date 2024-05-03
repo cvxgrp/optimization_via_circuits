@@ -71,16 +71,22 @@ def dadmm_C_all_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
     # initialize currents on inductors to sum to 0 on every edge
     i_L_12_1 = problem.set_initial_point()
     i_L_21_1 = problem.set_initial_point()
+
     i_L_13_1 = problem.set_initial_point()
     i_L_31_1 = problem.set_initial_point()
+
     i_L_23_1 = problem.set_initial_point()
     i_L_32_1 = problem.set_initial_point()
+
     i_L_24_1 = problem.set_initial_point()
     i_L_42_1 = problem.set_initial_point()
+
     i_L_34_1 = problem.set_initial_point()
     i_L_43_1 = problem.set_initial_point()
+
     i_L_45_1 = problem.set_initial_point()
     i_L_54_1 = problem.set_initial_point()
+    
     i_L_46_1 = problem.set_initial_point()
     i_L_64_1 = problem.set_initial_point()
 
@@ -102,18 +108,25 @@ def dadmm_C_all_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
     e_34_2 = e_34_1 - ( h / Capacitance) * (i_L_34_1 + i_L_43_1 + (2 * e_34_1 - x3_2 - x4_2) / R)
     e_45_2 = e_45_1 - ( h / Capacitance) * (i_L_45_1 + i_L_54_1 + (2 * e_45_1 - x4_2 - x5_2) / R)
     e_46_2 = e_46_1 - ( h / Capacitance) * (i_L_46_1 + i_L_64_1 + (2 * e_46_1 - x4_2 - x6_2) / R)
+
     i_L_12_2 = i_L_12_1 + ( h / Inductance) * (e_12_2 - x1_2)      
     i_L_21_2 = i_L_21_1 + ( h / Inductance) * (e_12_2 - x2_2)
+
     i_L_13_2 = i_L_13_1 + ( h / Inductance) * (e_13_2 - x1_2)
     i_L_31_2 = i_L_31_1 + ( h / Inductance) * (e_13_2 - x3_2)
+
     i_L_23_2 = i_L_23_1 + ( h / Inductance) * (e_23_2 - x2_2)
     i_L_32_2 = i_L_32_1 + ( h / Inductance) * (e_23_2 - x3_2)
+
     i_L_24_2 = i_L_24_1 + ( h / Inductance) * (e_24_2 - x2_2)
     i_L_42_2 = i_L_42_1 + ( h / Inductance) * (e_24_2 - x4_2)
+
     i_L_34_2 = i_L_34_1 + ( h / Inductance) * (e_34_2 - x3_2)
     i_L_43_2 = i_L_43_1 + ( h / Inductance) * (e_34_2 - x4_2)
+
     i_L_45_2 = i_L_45_1 + ( h / Inductance) * (e_45_2 - x4_2)
     i_L_54_2 = i_L_54_1 + ( h / Inductance) * (e_45_2 - x5_2)
+
     i_L_46_2 = i_L_46_1 + ( h / Inductance) * (e_46_2 - x4_2)
     i_L_64_2 = i_L_64_1 + ( h / Inductance) * (e_46_2 - x6_2)
     
