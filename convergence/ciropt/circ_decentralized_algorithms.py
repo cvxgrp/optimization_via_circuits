@@ -444,12 +444,19 @@ def dadmm_C_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
         proximal_step = co_func.proximal_step 
         h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
 
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    f3 = define_function(problem, mu, L_smooth, package)
+    # f1 = define_function(problem, mu, L_smooth, package)
+    # f2 = define_function(problem, mu, L_smooth, package)
+    # f3 = define_function(problem, mu, L_smooth, package)
+    # f4 = define_function(problem, mu, L_smooth, package)
+    # f5 = define_function(problem, mu, L_smooth, package)
+    # f6 = define_function(problem, mu, L_smooth, package)
+
+    f1 = define_function(problem, 0, L_smooth, package)
+    f2 = define_function(problem, 0, L_smooth, package)
+    f3 = define_function(problem, 0, L_smooth, package)
     f4 = define_function(problem, mu, L_smooth, package)
     f5 = define_function(problem, mu, L_smooth, package)
-    f6 = define_function(problem, mu, L_smooth, package)
+    f6 = define_function(problem, 0, L_smooth, package)
 
     x_star, y_star, f_star = (f1 + f2 + f3 + f4 + f5 + f6).stationary_point(return_gradient_and_function_value=True)
     y1_star, f1_star = f1.oracle(x_star)
