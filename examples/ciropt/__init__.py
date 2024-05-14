@@ -13,4 +13,4 @@ from ciropt.paper_example_circuits import *
 from ciropt.sympy_to_solvers import *
 from ciropt.extra_methods import *
 from ciropt.discretized_methods import *
-from ciropt.pg_extra import *
+from ciropt.dev_methods import *

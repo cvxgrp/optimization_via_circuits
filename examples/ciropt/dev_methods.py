@@ -178,3 +178,117 @@ def pg_extra_line3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
+
+
+def drs_variant(mu, L_smooth, R, Inductance, Capacitance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        # h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        # h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
+    y1_star, _ = f1.oracle(x_star)
+    # y2_star = y_star - y1_star
+    y2_star, _ = f2.oracle(x_star)
+    problem.add_constraint(Constraint((y1_star + y2_star - y_star) ** 2, "equality"))
+
+    i_L_0 = problem.set_initial_point()
+    x2_0 = problem.set_initial_point()
+    x1_0 = problem.set_initial_point()
+    i_C_0 = problem.set_initial_point()
+
+    h=0.1
+
+    x1_1, y1_1, f1_1 = proximal_step(x2_0 + R * i_L_0 + R * i_C_0, f1, R)
+    x2_1, y2_1, f2_1 = proximal_step(x1_1 - R * i_L_0 - R * i_C_0, f2, R)
+    # i_L_1 = i_L_0 + (h / Inductance)  * (x2_1 - x1_1)
+    # i_C_1 = (Capacitance / h)  * (x2_1 + x1_1 - x1_0 - x2_0)
+    i_L_1 = i_L_0 + h / Inductance  * (x2_1 - x1_1)
+    i_C_1 = Capacitance/h  * (x2_1 + x1_1 - x1_0 - x2_0)
+
+    x1_2, y1_2, f1_2 = proximal_step(x2_1 + R * i_L_1 + R * i_C_1, f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(x1_2 - R * i_L_1 - R * i_C_1, f2, R)
+    # i_L_2 = i_L_1 + h / Inductance *  (x2_2 - x1_2) 
+    # i_C_2 = (Capacitance / h)  * (x2_2 + x1_2 - x1_1 - x2_1) 
+    i_L_2 = i_L_1 + h/Inductance *  (x2_2 - x1_2) 
+    i_C_2 = Capacitance/h  * (x2_2 + x1_2 - x1_1 - x2_1) 
+
+    E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (x2_1 - x_star)**2 + (Capacitance/2) * (x1_0 - x2_0) ** 2 
+    E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (x2_2 - x_star)**2 + (Capacitance/2) * (x1_0 - x2_0) ** 2 
+
+    Delta_1 = d * R * (y1_1 - i_L_1)**2 \
+              + b * (f1_1 + f2_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
+    # Delta_1 = b * (f1_1 + f2_1 - f_star)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+def drs_variant2(mu, L_smooth, R, Inductance, Capacitance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        # h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        # h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = (f1 + f2).stationary_point(return_gradient_and_function_value=True)
+    y1_star, _ = f1.oracle(x_star)
+    # y2_star = y_star - y1_star
+    y2_star, _ = f2.oracle(x_star)
+    problem.add_constraint(Constraint((y1_star + y2_star - y_star) ** 2, "equality"))
+
+    i_L_0 = problem.set_initial_point()
+    x2_0 = problem.set_initial_point()
+    x1_0 = problem.set_initial_point()
+    v_C_0 = problem.set_initial_point()
+    y1_0, f1_0 = f1.oracle(x1_0) # f1=g
+    i_C_0 = - i_L_0 - y1_0 - v_C_0/R
+    
+    # x1_1, y1_1, f1_1 = proximal_step(x2_0 + R * i_L_0 + R * i_C_1, f1, R)
+    x2_1, y2_1, f2_1 = proximal_step(x1_0 - R * i_L_0 - R * i_C_0, f2, R)
+    v_C_1 = v_C_0 + (h / Capacitance)  * i_C_0
+    x1_1 = x2_1 - v_C_1
+    i_L_1 = i_L_0 + (h / Inductance)  * (x2_1 - x1_1)    
+    y1_1, f1_1 = f1.oracle(x1_1) # f1=g
+    i_C_1 = - i_L_1 - y1_1 - v_C_1/R
+
+    x2_2, y2_2, f2_2 = proximal_step(x1_1 - R * i_L_1 - R * i_C_1, f2, R)
+    v_C_2 = v_C_1 + (h / Capacitance)  * i_C_1
+    x1_2 = x2_2 - v_C_2
+    i_L_2 = i_L_1 + (h / Inductance)  * (x2_2 - x1_2)
+
+    E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (x2_1 - x_star)**2 + (Capacitance/2) * (x1_1 - x2_1) ** 2 
+    E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (x2_2 - x_star)**2 + (Capacitance/2) * (x1_2 - x2_2) ** 2 
+
+    Delta_1 = d * R * (y1_1 - i_L_1)**2 \
+            + b * (f1_0 + f2_1 - y1_star * (x1_0 - x_star) - y2_star * (x2_1 - x_star) - f_star)
+            #   + b * (f1_1 + f2_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
+    # Delta_1 = b * (f1_1 + f2_1 - f_star)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
