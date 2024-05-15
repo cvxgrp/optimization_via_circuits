@@ -89,3 +89,109 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
 
 
 
+def Minner(x1, w1, x2, w2, rho, network_data, n_node) :
+    Vred = network_data['Vred']
+    Sred = network_data['Sred']
+
+    norm_squared = (1/rho)*np.sum(x1*x2) + (1/rho)*np.sum(x1*w2) + (1/rho)*np.sum(w1*x2)
+    u1 = (1/rho)*Vred.T@((Vred@w1)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
+    u2 = (1/rho)*Vred.T@((Vred@w2)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
+    norm_squared = norm_squared + rho*np.sum(u1*u2)
+
+    return norm_squared
+
+def Mnormsq(x, w, rho, network_data, n_node) :
+    return 1/4*Minner(x, w, x, w, rho, network_data, n_node)
+
+def pg_extra(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star, 
+          prox_operators, fi_operators, params=None, printing=False, sc_index_set = None, freq=50) :
+    n_node = problem_spec['n_node']
+    vector_size = problem_spec['vector_size']
+    rho = problem_data['rho']
+    # eps = problem_spec['sc_eps']
+
+    Q = problem_data['Q']
+    b = problem_data['b']
+    itr_num = problem_data['itr_num']
+    W = network_data['W']
+    
+    if alg_type == "pg_extra": 
+        step_size_L = 1/2
+    elif alg_type == "pg_extra_c":
+        R, h, Capacitance = params["R"], params["h"], params["Capacitance"]
+        rho = R
+        step_size_L = h
+        step_size_C = h / Capacitance
+        R_matrix = 1/R * W
+
+    err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
+
+    x_0 = np.zeros((n_node,vector_size))
+    for j in range(n_node):
+        x_0[j] = b[j]
+
+    x_k = np.array(x_0)
+    w_0 = np.zeros((n_node,vector_size))
+    w_k = np.array(w_0)
+    # b_stack = np.reshape(np.repeat(b, n_node), (n_sensor, n_node))
+
+    if alg_type=="pg_extra_c":
+        i_L_0 = np.zeros((n_node,n_node,vector_size))
+        i_L_k = np.array(i_L_0)
+        tile_0 = np.zeros((n_node,n_node,vector_size))
+        tile_k = np.array(tile_0)
+        bridge_0 = np.zeros((n_node,n_node,vector_size))
+        bridge_k = np.array(bridge_0)
+
+    for ii in range(itr_num) :
+        x_k_prev = np.array(x_k)
+        w_k_prev = np.array(w_k)
+        f_val = 0
+
+        if alg_type=="pg_extra":
+            w_k = w_k_prev + step_size_L*(np.eye(n_node) - W) @ x_k_prev            
+        elif alg_type=="pg_extra_c":
+            tile_k_prev = np.array(tile_k)
+            i_L_k_prev = np.array(i_L_k)
+            for jj in range(n_node) :
+                for ll in range(n_node) : # change to adjacency[ll]
+                    if jj != ll :
+                        if {jj,ll}.issubset(sc_index_set):
+                            bridge_k[jj][ll] = i_L_k_prev[jj][ll] + R_matrix[jj][ll] * ( x_k_prev[jj] - tile_k_prev[jj][ll] )
+                            i_L_k[jj][ll] = i_L_k_prev[jj][ll] + step_size_L * R_matrix[jj][ll] * ( x_k_prev[jj] - tile_k_prev[jj][ll] )
+                        else :
+                            bridge_k[jj][ll] = i_L_k_prev[jj][ll] + R_matrix[jj][ll] * ( x_k_prev[jj] - x_k_prev[ll] )
+                            i_L_k[jj][ll] = i_L_k_prev[jj][ll] + step_size_L * R_matrix[jj][ll] * ( x_k_prev[jj] - x_k_prev[ll] )
+            for jj in range(n_node) :
+                for ll in range(n_node) :
+                    if jj != ll :
+                        tile_k[jj][ll] = tile_k_prev[jj][ll] + step_size_C * ( bridge_k[jj][ll] + bridge_k[ll][jj] )
+
+        for jj in range(n_node) :
+            Q_temp = Q[jj]
+            b_temp = b[jj]
+            # x_k_prev_temp = x_k_prev[jj]
+            if alg_type=="pg_extra":
+                e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])
+            elif alg_type=="pg_extra_c":                
+                sum_bridge = np.array(np.zeros(vector_size))
+                for ll in range(n_node) : # change to adjacency[ll]
+                    sum_bridge += bridge_k[jj][ll]
+                e_k_jj = x_k_prev[jj] - R * sum_bridge
+            x_k[jj] = prox_operators[jj](e_k_jj, rho, Q_temp, b_temp, vector_size)
+            # f_val += (1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + b[jj] @ x_k[jj])[0]
+            f_val += 1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + np.dot(b[jj][0], x_k[jj])
+        
+        op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, rho, network_data, n_node))        
+
+        err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
+        err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
+        # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
+        f_reldiff.append(np.abs((f_val - f_star)/f_star))
+        if printing and (ii % freq == 0 or ii == itr_num-1):
+            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
+
+    return op_norm, err_opt_star, err_opt_reldiff, const_vio, f_reldiff
+
+
+

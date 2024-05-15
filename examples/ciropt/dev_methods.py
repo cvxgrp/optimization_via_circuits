@@ -329,23 +329,36 @@ def pg_extra_line5(mu, L_smooth_h, L_smooth_f, R, W, params=None):
     x1_1 = problem.set_initial_point()
     x2_1 = problem.set_initial_point()
     x3_1 = problem.set_initial_point()
+    x4_1 = problem.set_initial_point()
+    x5_1 = problem.set_initial_point()
     y_f1_1, f1_1 = f1.oracle(x1_1)
     y_f2_1, f2_1 = f2.oracle(x2_1)
     y_f3_1, f3_1 = f3.oracle(x3_1)
+    y_f4_1, f4_1 = f4.oracle(x4_1)
+    y_f5_1, f5_1 = f5.oracle(x5_1)
     y_h1_1, h1_1 = h1.oracle(x1_1)
     y_h2_1, h2_1 = h2.oracle(x2_1)    
     y_h3_1, h3_1 = h3.oracle(x3_1)    
+    y_h4_1, h4_1 = h4.oracle(x4_1)    
+    y_h5_1, h5_1 = h5.oracle(x5_1)    
+
 
     i_L_12_1 =  problem.set_initial_point() 
     i_L_23_1 =  problem.set_initial_point() 
+    i_L_34_1 =  problem.set_initial_point() 
+    i_L_45_1 =  problem.set_initial_point() 
 
-    # update
+    # update # should change to sum
     e1_1 = W[0][0] * x1_1 + W[0][1] * x2_1 + W[0][2] * x3_1 - R * y_h1_1 - R * i_L_12_1
     e2_1 = W[1][0] * x1_1 + W[1][1] * x2_1 + W[1][2] * x3_1 - R * y_h2_1 + R * i_L_12_1 - R * i_L_23_1
     e3_1 = W[2][0] * x1_1 + W[2][1] * x2_1 + W[2][2] * x3_1 - R * y_h3_1 + R * i_L_23_1
+    e4_1 = W[2][0] * x1_1 + W[2][1] * x2_1 + W[2][2] * x3_1 - R * y_h3_1 + R * i_L_23_1
+    e5_1 = W[2][0] * x1_1 + W[2][1] * x2_1 + W[2][2] * x3_1 - R * y_h3_1 + R * i_L_23_1
     x1_2, y_f1_2, f1_2 = proximal_step(e1_1, f1, R)
     x2_2, y_f2_2, f2_2 = proximal_step(e2_1, f2, R)
     x3_2, y_f3_2, f3_2 = proximal_step(e3_1, f3, R)
+    x4_2, y_f4_2, f4_2 = proximal_step(e4_1, f4, R)
+    x5_2, y_f5_2, f5_2 = proximal_step(e5_1, f3, R)
 
     R_12, R_23 = R / W[0][1], R / W[1][2]
     L_12, L_23 = R_12, R_23

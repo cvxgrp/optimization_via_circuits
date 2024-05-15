@@ -85,3 +85,72 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
 
 
 
+
+
+def Minner(x1, w1, x2, w2, rho, network_data, n_node) :
+    Vred = network_data['Vred']
+    Sred = network_data['Sred']
+
+    norm_squared = (1/rho)*np.sum(x1*x2) + (1/rho)*np.sum(x1*w2) + (1/rho)*np.sum(w1*x2)
+    u1 = (1/rho)*Vred.T@((Vred@w1)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
+    u2 = (1/rho)*Vred.T@((Vred@w2)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
+    norm_squared = norm_squared + rho*np.sum(u1*u2)
+
+    return norm_squared
+
+def Mnormsq(x, w, rho, network_data, n_node) :
+    return 1/4*Minner(x, w, x, w, rho, network_data, n_node)
+
+def pg_extra(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star, 
+          prox_operators, fi_operators, params=None, printing=False, freq=50) :
+    
+    n_node = problem_spec['n_node']
+    vector_size = problem_spec['vector_size']
+    rho = problem_data['rho']
+    theta = problem_spec['sc_theta']
+
+    b = problem_data['b']
+    c = problem_data['c']
+    itr_num = problem_data['itr_num']
+    W = network_data['W']
+    
+    err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
+
+    x_0 = np.reshape(b, (n_node, vector_size))
+    x_k = np.array(x_0)
+    w_0 = np.zeros((n_node,vector_size))
+    w_k = np.array(w_0)
+
+    e_k = np.array(x_0)
+
+    for ii in range(itr_num) :
+        x_k_prev = np.array(x_k)
+        w_k_prev = np.array(w_k)
+        f_val = 0
+        for jj in range(n_node) :
+            b_temp = b[jj*vector_size : (jj+1)*vector_size]
+            c_temp = c[jj*vector_size : (jj+1)*vector_size]
+            z_temp = (W[jj]@x_k_prev - w_k_prev[jj])
+            if jj in [3, 4]:
+                x_k[jj] = prox_operators[jj](z_temp, rho, b_temp, c_temp, theta=theta)
+                # x_k[jj] = cvx_prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, vector_size, theta=theta)
+                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2) + theta * np.linalg.norm(x_k[jj] - c_temp, ord=2)**2
+            else:
+                e_k[jj] = b_temp - z_temp
+                x_k[jj] = prox_operators[jj](z_temp, rho, b_temp)
+                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2)
+
+        w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
+        
+        op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, rho, network_data, n_node))        
+
+        err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
+        err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
+        # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
+        f_reldiff.append(np.abs(f_star - f_val)/f_star)
+        if printing and (ii % freq == 0 or ii == itr_num-1):
+            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
+
+    return op_norm, err_opt_star, err_opt_reldiff, const_vio, f_reldiff
+
+

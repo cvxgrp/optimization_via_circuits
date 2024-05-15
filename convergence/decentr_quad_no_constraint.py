@@ -87,6 +87,7 @@ def data_generation(problem_spec) :
     vector_size = problem_spec['vector_size']
     theta = problem_spec['sc_theta'] 
     sc_perturb = problem_spec['sc_perturb'] 
+    sc_index_set = problem_spec['sc_index_set'] 
 
     Q, b = [], []
     for j in range(n_node):
@@ -105,7 +106,7 @@ def data_generation(problem_spec) :
     
     if sc_perturb:
         for j in range(n_node):
-            if j == 3 or j == 4:
+            if j in sc_index_set:
                 # Q[j] += theta * np.eye(vector_size)
                 # Q[j] = 50 * Q[j]
                 # sq_Q = np.random.normal(loc=2, scale=1, size=(vector_size, vector_size))
@@ -114,7 +115,8 @@ def data_generation(problem_spec) :
                 # D = np.diag(np.random.normal(3, 1, vector_size))
                 # D = np.diag(np.random.normal(10, 1, vector_size))
                 # D = np.diag(np.random.normal(3, 1, vector_size))
-                D = np.diag(np.random.normal(np.sqrt(3), 1, vector_size))
+                D = theta * np.diag(np.random.normal(np.sqrt(3), 1, vector_size))
+                # D = np.diag(np.random.normal(np.sqrt(3), 1, vector_size))
                 U = ortho_group.rvs(dim=vector_size)
                 sq_Q = np.dot(D,U)
                 Q[j] = np.dot( sq_Q.T, sq_Q )
