@@ -123,6 +123,10 @@ def pg_extra(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_s
         step_size_L = h
         step_size_C = h / Capacitance
         R_matrix = 1/R * W
+    elif alg_type == "pg_extra_R":
+        step_size_L = 1/2
+        S = params['S']
+        # S = 0.1
 
     err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
 
@@ -142,6 +146,9 @@ def pg_extra(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_s
         tile_k = np.array(tile_0)
         bridge_0 = np.zeros((n_node,n_node,vector_size))
         bridge_k = np.array(bridge_0)
+    elif alg_type=="pg_extra_R":
+        e_0 = np.zeros((n_node,vector_size))
+        e_k = np.array(e_0)
 
     for ii in range(itr_num) :
         x_k_prev = np.array(x_k)
@@ -166,20 +173,33 @@ def pg_extra(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_s
                 for ll in range(n_node) :
                     if jj != ll :
                         tile_k[jj][ll] = tile_k_prev[jj][ll] + step_size_C * ( bridge_k[jj][ll] + bridge_k[ll][jj] )
+        elif alg_type=="pg_extra_R":
+            w_k = w_k_prev + step_size_L*(np.eye(n_node) - W) @ x_k_prev  
 
         for jj in range(n_node) :
             Q_temp = Q[jj]
             b_temp = b[jj]
             # x_k_prev_temp = x_k_prev[jj]
             if alg_type=="pg_extra":
-                e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])
+                e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])            
             elif alg_type=="pg_extra_c":                
                 sum_bridge = np.array(np.zeros(vector_size))
                 for ll in range(n_node) : # change to adjacency[ll]
                     sum_bridge += bridge_k[jj][ll]
                 e_k_jj = x_k_prev[jj] - R * sum_bridge
+            elif alg_type=="pg_extra_R":
+                e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj])  
+                e_k[jj] = e_k_jj 
             x_k[jj] = prox_operators[jj](e_k_jj, rho, Q_temp, b_temp, vector_size)
-            # f_val += (1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + b[jj] @ x_k[jj])[0]
+            # f_val += 1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + np.dot(b[jj][0], x_k[jj])
+
+        if alg_type=="pg_extra_R":
+            e_k_prev = np.array(e_k)
+            # x_k_jj = S * (e_k_prev - W @ e_k_prev)     
+            x_k_R = S * (np.eye(n_node) - W) @ e_k_prev
+            x_k[jj] += x_k_R[jj]
+
+        for jj in range(n_node) :
             f_val += 1/2 * x_k[jj] @ Q[jj] @ x_k[jj].T + np.dot(b[jj][0], x_k[jj])
         
         op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, rho, network_data, n_node))        
