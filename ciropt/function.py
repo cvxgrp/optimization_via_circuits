@@ -281,3 +281,16 @@ class SmoothConvexFunction(SmoothStronglyConvexFunction):
                          L=L)
 
         assert self.L < np.inf, print("use the class ConvexFunction instead")
+
+
+
+def def_function(problem, mu, L_smooth):
+    if mu != 0 and L_smooth < np.inf:
+        func = problem.declare_function(SmoothStronglyConvexFunction, L=L_smooth, mu=mu) 
+    elif mu != 0:
+        func = problem.declare_function(StronglyConvexFunction, mu=mu) 
+    elif L_smooth < np.inf:
+        func = problem.declare_function(SmoothConvexFunction, L=L_smooth) 
+    else:
+        func = problem.declare_function(ConvexFunction) 
+    return func
