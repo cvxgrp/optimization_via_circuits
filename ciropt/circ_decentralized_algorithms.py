@@ -256,7 +256,7 @@ def dadmm_R_graph6(mu, L_smooth, R, R_extra, Inductance, params=None):
     return problem
 
 
-def dadmm_C_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
+def dadmm_C_graph6(mus, L_smooths, R, Capacitance, Inductance, params=None):
     # graph with 6 nodes and 7 edges (1,2), (1,3), (2,3), (2,4), (3,4), (4,5), (4,6)
     # 1 -- 2 -- 4 -- 5
     #   \  |  /  \
@@ -277,12 +277,12 @@ def dadmm_C_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
         proximal_step = co_func.proximal_step 
         h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
 
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    f3 = define_function(problem, mu, L_smooth, package)
-    f4 = define_function(problem, mu, L_smooth, package)
-    f5 = define_function(problem, mu, L_smooth, package)
-    f6 = define_function(problem, mu, L_smooth, package)
+    f1 = define_function(problem, mus[0], L_smooths[0], package)
+    f2 = define_function(problem, mus[0], L_smooths[0], package)
+    f3 = define_function(problem, mus[0], L_smooths[0], package)
+    f4 = define_function(problem, mus[1], L_smooths[1], package)
+    f5 = define_function(problem, mus[1], L_smooths[1], package)
+    f6 = define_function(problem, mus[0], L_smooths[0], package)
 
     x_star, y_star, f_star = (f1 + f2 + f3 + f4 + f5 + f6).stationary_point(return_gradient_and_function_value=True)
     y1_star, f1_star = f1.oracle(x_star)
@@ -726,6 +726,7 @@ def decentralized_admm_graph6(mu, L_smooth, R, Inductance, params=None):
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
 
+
 def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
     # line graph with 3 nodes
     if params is not None:
@@ -809,6 +810,7 @@ def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem
+
 
 def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
     # line graph with 3 nodes
