@@ -66,14 +66,12 @@ is nondifferentiable but strongly convex with $\mu=1$.
 \end{array}
 ```
 2. The optimality condition for this problem is to find $x$ such that
-$0 \in \nabla f(x)$. The corresponding SI for this condition follows, see
+$0 \in \nabla f(x)$. The corresponding SI for this condition follows, see below.
+![circuit](https://github.com/cvxgrp/optimization_via_circuits/blob/tetiana/examples/figures/hello_world_si.pdf?raw=true)
 
+3. We consider the following admissible DI, see below.
 
-![circuit](./examples/figures/hello_world_si.pdf).
-
-3. We consider the following admissible DI, see 
-
-![circuit](./examples/figures/hello_world_di.pdf).
+![circuit](https://github.com/cvxgrp/optimization_via_circuits/blob/tetiana/examples/figures/hello_world_di.pdf?raw=true)
 
 4. Now let's discretize this DI using `ciropt`.
 
@@ -155,9 +153,8 @@ z^{k+1} &= z^k - 0.1575(5 y^k + 3w^k)
 \mbox{minimize}& \|x\|_1 + \frac{1}{2} \|x\|_2^2 \\
 \end{array}
 ```
-The function value across iteration is plotted 
-
-![here](./examples/figures/simple_hello_wrld.pdf).
+The function value across iteration is plotted below.
+![here](https://github.com/cvxgrp/optimization_via_circuits/blob/tetiana/examples/figures/simple_hello_wrld.pdf?raw=true)
 
 ## Example notebooks
 We have [example notebooks](https://github.com/cvxgrp/optimization_via_circuits/tree/main/examples) 
