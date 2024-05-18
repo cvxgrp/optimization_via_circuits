@@ -18,7 +18,7 @@ using other package.
 ## Installation
 To install `ciropt` 1) activate virtual environment, 2) clone the repo, 3) from inside the directory run 
 ```python3
-python setup.py install
+pip install -e .
 ```
 Requirements
 * python >= 3.10
@@ -62,15 +62,18 @@ or explanation below.
 is nondifferentiable but strongly convex with $\mu=1$.
 ```math
 \begin{array}{ll}
-\mbox{minimize}& f(x) 
-    \mbox{subject to}& x
+\mbox{minimize}& f(x)
 \end{array}
 ```
 2. The optimality condition for this problem is to find $x$ such that
 $0 \in \nabla f(x)$. The corresponding SI for this condition follows, see
-[circuit](examples/figures/hello_world_si.pdf)
 
-3. We consider the following admissible DI, see [circuit](examples/figures/hello_world_di.pdf).
+
+![circuit](./examples/figures/hello_world_si.pdf).
+
+3. We consider the following admissible DI, see 
+
+![circuit](./examples/figures/hello_world_di.pdf).
 
 4. Now let's discretize this DI using `ciropt`.
 
@@ -147,8 +150,14 @@ z^{k+1} &= z^k - 0.1575(5 y^k + 3w^k)
 ```
 
 5. Solve your problem using new algorithm. 
+```math
+\begin{array}{ll}
+\mbox{minimize}& \|x\|_1 + \frac{1}{2} \|x\|_2^2 \\
+\end{array}
+```
+The function value across iteration is plotted 
 
-
+![here](./examples/figures/simple_hello_wrld.pdf).
 
 ## Example notebooks
 We have [example notebooks](https://github.com/cvxgrp/optimization_via_circuits/tree/main/examples) 
