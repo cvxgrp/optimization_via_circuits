@@ -54,20 +54,21 @@ Feel free to experiment with various DIs to discover new algorithms suitable for
 
 
 ### Hello world
+See the
+[hello world notebook](https://github.com/cvxgrp/mlr_fitting/tree/main/examples/hello_world.ipynb)
+or explanation below.
 
-1. As a hello world example we consider the simplest problem given below.
+1. As a hello world example we consider the simplest problem given below, where $f$
+is nondifferentiable but strongly convex with $\mu=1$.
 ```math
 \begin{array}{ll}
-\mbox{minimize}& f(x)\\
+\mbox{minimize}& f(x) 
     \mbox{subject to}& x
 \end{array}
 ```
-2. The optimality condition for this problem are to find $x$ such that
-$0 \in \nabla f(x)$. The corresponding SI for this condition is below.
-[View circuit](examples/figures/hello_world_si.pdf)
-<iframe src="assets/tikz_drawing.pdf" width="100%" height="600px">
-    This browser does not support PDFs. Please download the PDF to view it: <a href="examples/figures/hello_world_si.pdf">Download PDF</a>.
-</iframe>
+2. The optimality condition for this problem is to find $x$ such that
+$0 \in \nabla f(x)$. The corresponding SI for this condition follows, see
+[circuit](examples/figures/hello_world_si.pdf)
 
 3. We consider the following admissible DI, see [circuit](examples/figures/hello_world_di.pdf).
 
@@ -81,10 +82,9 @@ import ciropt as co
 problem = co.CircuitOpt()
 ```
 
-
-**Step 2.** Define function classes for each $f_i$. In this example there is only single function.
+**Step 2.** Define function classes for each $f_i$. In this example there is only single function with smoothness$M=\infty$ and strong convexity $\mu=1$.
 ```python3
-f = co.define_function(problem, mu, L_smooth, package )
+f = co.def_function(problem, mu, M)
 ```
 
 **Step 3.** Define optimal points.
@@ -97,8 +97,7 @@ x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_valu
 h, b, d = problem.h, problem.b, problem.d
 ```
 
-**Step 5.** Define values for RLC
-and one step transition for discretized V-I relations
+**Step 5.** Define values for RLC and one step transition for discretized V-I relations
 of given DI.
 ```python3
 R, C = 1, 10
@@ -141,18 +140,14 @@ params = problem.solve(solver="ipopt")[:1]
 The resulting provably convergent algorithm is 
 ```math
 \begin{align*}
-x^k &= \prox_{(1/2) f}(z^k ),\quad  y^k=2(z^k-x^k)\\
+x^k &= \mathbf{prox}_{(1/2) f}(z^k ),\quad  y^k=2(z^k-x^k)\\
 w^{k+1} &= w^k - 0.315(y^k + 3w^k) \\
 z^{k+1} &= z^k - 0.1575(5 y^k + 3w^k)
 \end{align*}
 ```
 
-5. Run this algorithm to our problem. 
+5. Solve your problem using new algorithm. 
 
-
-
-We provide a guideline on how to use our automatic discretization package in the 
-[hello world notebook](https://github.com/cvxgrp/mlr_fitting/tree/main/examples/hello_world.ipynb). 
 
 
 ## Example notebooks
@@ -164,7 +159,7 @@ Centralized methods:
 * proximal gradient, see [notebook](x)  
 * proximal point method, see [notebook](x)           
 
-Decentralized methods: (for underlying graph 1 -- 2 -- 3)
+Decentralized methods: (for agent communication graph 1 -- 2 -- 3)
 * DGD, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/dgd.ipynb) 
 * diffusion, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/diffusion.ipynb) 
 * DADMM, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/decentralized_admm_line3.ipynb) 
