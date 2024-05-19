@@ -30,12 +30,12 @@ Requirements
 
 ### High level process
 1. Start with the optimization problem. 
-```math
+$$
 \begin{array}{ll}
-\mbox{minimize}& f(x)\\
-    \mbox{subject to}& x\in \mathcal{R}(E^\intercal )
+\text{minimize}& f(x)\\
+\text{subject to}& x\in \mathcal{R}(E^\intercal )
 \end{array}
-```
+$$
 
 2. Create the static interconnect (SI) respresenting the optimality conditions.
 
@@ -51,17 +51,15 @@ Feel free to experiment with various DIs to discover new algorithms suitable for
 
 
 ### Hello world
-See the
-[hello world notebook](https://github.com/cvxgrp/mlr_fitting/tree/main/examples/hello_world.ipynb)
-or explanation below.
+See the `examples/hello_world.ipynb` notebook or explanation below.
 
 1. As a hello world example we consider the simplest problem given below, where $f$
 is nondifferentiable but strongly convex with $\mu=1/2$.
-```math
+$$
 \begin{array}{ll}
-\mbox{minimize}& f(x)
+\text{minimize}& f(x)
 \end{array}
-```
+$$
 2. The optimality condition for this problem is to find $x$ such that
 $0 \in \partial f(x)$. The corresponding SI for this condition follows, see
 [circuit](./examples/figures/hello_world_si.pdf).
