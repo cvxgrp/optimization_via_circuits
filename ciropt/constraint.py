@@ -13,12 +13,6 @@ class Constraint(object):
     counter = 0
 
     def __init__(self, expression, equality_or_inequality):
-        """
-        :class:`Constraint` objects can also be instantiated via the following arguments.
-        Args:
-            expression (Expression): an object of class Expression
-            equality_or_inequality (str): either 'equality' or 'inequality'.
-        """
         # Update the counter
         self.counter = Constraint.counter
         Constraint.counter += 1

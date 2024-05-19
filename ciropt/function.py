@@ -1,4 +1,3 @@
-import casadi as ca
 import numpy as np
 import sympy as sp
 
@@ -200,7 +199,6 @@ def subgrad_conjugate(gx, func):
     return x
         
 
-
 class ConvexFunction(Function):
     def __init__(self,
                  is_leaf=True,
@@ -216,7 +214,6 @@ class ConvexFunction(Function):
                 if point_i != point_j:
                     # Interpolation conditions of convex functions class
                     self.list_of_class_constraints.append( fj - fi +  gj * (xi - xj) )
-
 
 
 class SmoothStronglyConvexFunction(Function):
@@ -244,7 +241,6 @@ class SmoothStronglyConvexFunction(Function):
                                         + self.mu / (2 * (1 - self.mu / self.L)) * (xi - xj - 1/self.L * (gi - gj))**2)
                     
 
-
 class StronglyConvexFunction(Function):
     def __init__(self,
                  mu,
@@ -266,22 +262,17 @@ class StronglyConvexFunction(Function):
                                         + self.mu / 2 * (xi - xj) ** 2)
                     
 
-
 class SmoothConvexFunction(SmoothStronglyConvexFunction):
     def __init__(self,
                  L=1.,
                  is_leaf=True,
-                 decomposition_dict=None,
-                 reuse_gradient=True):
+                 decomposition_dict=None):
         # Inherit from SmoothStronglyConvexFunction as a special case of it with mu=0.
         super().__init__(is_leaf=is_leaf,
                          decomposition_dict=decomposition_dict,
-                         reuse_gradient=True,
-                         mu=0,
-                         L=L)
+                         reuse_gradient=True, mu=0, L=L)
 
         assert self.L < np.inf, print("use the class ConvexFunction instead")
-
 
 
 def def_function(problem, mu, L_smooth):

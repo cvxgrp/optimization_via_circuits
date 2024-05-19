@@ -1,4 +1,3 @@
-import casadi as ca
 import numpy as np
 import sympy as sp
 
@@ -87,8 +86,7 @@ class Expression(object):
                         value += weight * key.eval()
                     elif type(key) == tuple:
                         point1, point2 = key
-                        assert point1.get_is_leaf()
-                        assert point2.get_is_leaf()
+                        assert point1.get_is_leaf() and point2.get_is_leaf()
                         value += weight * np.dot(point1.eval(), point2.eval())
                     elif key == 1:
                         value += weight

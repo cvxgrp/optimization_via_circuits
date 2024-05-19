@@ -1,30 +1,13 @@
 import sympy as sp
 import numpy as np
-import gurobipy as gp
-import cvxpy as cp
+
 
 
 from ciropt.utils import *
 
 
 
-def gp_linearize_monomial(monomial, gp_vars, model):
-    """
-    Introduce quadratic constraints to make current monomial linear w.r.t. new variables
-    """
-    if monomial == []:
-        return 1
-    monomial = sorted(monomial)
-    for i in range(len(monomial) - 1):
-        new_variable = "_".join(monomial[:i+2])
-        if new_variable not in gp_vars:
-            # store a quadratic constraint for a new variable concatenation
-            gp_vars[new_variable] = model.addVar(name=new_variable, lb=-1.*gp.GRB.INFINITY, ub=gp.GRB.INFINITY)
-            model.update()
-            model.addConstr( gp_vars[new_variable] == gp_vars["_".join(monomial[:i+1])] * gp_vars[monomial[i+1]] )
-        if i == len(monomial)-2:
-            assert "_".join(monomial) == new_variable
-    return gp_vars["_".join(monomial)]
+
 
 
 def find_lambda_nu(monomial):

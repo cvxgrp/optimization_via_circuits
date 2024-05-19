@@ -10,10 +10,7 @@ Our methodology provides a quick and systematic recipe for designing new, provab
 
 In this repository, we provide `ciropt` package implementing this methodology.
 With `ciropt`, you can easily explore a wide range of algorithms that have a convergence guarantee.
-
-The structure of this repo borrows a lot from [PEPit](https://pepit.readthedocs.io/en/latest/quickstart.html) package.
-This is intended to easily verify that the discretization is dissipative
-using other package. 
+ 
 
 ## Installation
 To install `ciropt` 1) activate virtual environment, 2) clone the repo, 3) from inside the directory run 
@@ -22,11 +19,11 @@ pip install -e .
 ```
 Requirements
 * python >= 3.10
+* pepit >= 0.2.1
 * numpy >= 1.26
 * scipy >= 1.11.3
 * casadi >= 3.6.4
 * sympy >= 1.12
-* pepit >= 0.2.1
 
 
 ## Designing convergent optimization algorithms 
@@ -59,19 +56,18 @@ See the
 or explanation below.
 
 1. As a hello world example we consider the simplest problem given below, where $f$
-is nondifferentiable but strongly convex with $\mu=1$.
+is nondifferentiable but strongly convex with $\mu=1/2$.
 ```math
 \begin{array}{ll}
 \mbox{minimize}& f(x)
 \end{array}
 ```
 2. The optimality condition for this problem is to find $x$ such that
-$0 \in \nabla f(x)$. The corresponding SI for this condition follows, see below.
-![circuit](https://github.com/cvxgrp/optimization_via_circuits/blob/tetiana/examples/figures/hello_world_si.pdf?raw=true)
+$0 \in \partial f(x)$. The corresponding SI for this condition follows, see
+[circuit](./examples/figures/hello_world_si.pdf).
 
-3. We consider the following admissible DI, see below.
-
-![circuit](https://github.com/cvxgrp/optimization_via_circuits/blob/tetiana/examples/figures/hello_world_di.pdf?raw=true)
+3. We consider the following admissible DI, see 
+[circuit](./examples/figures/hello_world_di.pdf).
 
 4. Now let's discretize this DI using `ciropt`.
 
@@ -83,7 +79,7 @@ import ciropt as co
 problem = co.CircuitOpt()
 ```
 
-**Step 2.** Define function classes for each $f_i$. In this example there is only single function with smoothness$M=\infty$ and strong convexity $\mu=1$.
+**Step 2.** Define function classes for each $f_i$. In this example there is only single function with smoothness $M=\infty$ and strong convexity $\mu=4$.
 ```python3
 f = co.def_function(problem, mu, M)
 ```
@@ -131,45 +127,57 @@ Delta_1 = b * (x_1 - x_star) * (y_1 - y_star) \
 
 
 problem.set_performance_metric(E_2 - (E_1 - Delta_1))
-problem.obj = problem.b + problem.d * 1.1
+problem.obj = problem.b + problem.d * 1.01
 
 params = problem.solve(solver="ipopt")[:1]
 ``` 
 
-
-
 The resulting provably convergent algorithm is 
-```math
+$$
 \begin{align*}
 x^k &= \mathbf{prox}_{(1/2) f}(z^k ),\quad  y^k=2(z^k-x^k)\\
-w^{k+1} &= w^k - 0.315(y^k + 3w^k) \\
-z^{k+1} &= z^k - 0.1575(5 y^k + 3w^k)
+w^{k+1} &= w^k - 0.331(y^k + 3w^k) \\
+z^{k+1} &= z^k - 0.165(5 y^k + 3w^k)
 \end{align*}
-```
+$$
 
 5. Solve your problem using new algorithm. 
-```math
+We consider the primal problem
+$$
 \begin{array}{ll}
-\mbox{minimize}& \|x\|_1 + \frac{1}{2} \|x\|_2^2 \\
+\text{minimize} & f(x) = \frac{1}{2}\sum_i
+\begin{cases}
+(x_i - c_i)^2 & |x_i-c_i| \leq 1 \\
+2(x_i-c_i)-1 & |x_i-c_i| > 1
+\end{cases} \\
+\text{subject to} & Ax = b
 \end{array}
-```
-The function value across iteration is plotted below.
-![here](https://github.com/cvxgrp/optimization_via_circuits/blob/tetiana/examples/figures/simple_hello_wrld.pdf?raw=true)
+$$
+and solve the dual problem
+$$
+\begin{array}{ll}
+\text{maximize} & g(y) = -f^*(-A^T y ) - b^Ty.
+\end{array}
+$$
+We apply our discretization to solve the dual problem $g(y)$.
+Since $f$ is CCP and $2$-smooth (as a huber loss), then $f^*$ is $1/2$-strongly convex. We rescale $A$ to have $g$ $1/2$-strongly convex.
+
+
+The function value across iteration is plotted [here](./examples/figures/simple_hello_wrld.pdf).
 
 ## Example notebooks
-We have [example notebooks](https://github.com/cvxgrp/optimization_via_circuits/tree/main/examples) 
+See notebooks in `examples/` folder
 that show how to use `ciropt` to discretize various circuits.
 
 Centralized methods:
-* gradient descent, see [notebook](x) 
-* proximal gradient, see [notebook](x)  
-* proximal point method, see [notebook](x)           
+* gradient descent, proximal gradient, proximal point method, Nesterov acceleration
+* primal decomposition, dual decomposition, Douglas-Rachford splitting, proximal decomposition, Davis-Yin splitting         
 
-Decentralized methods: (for agent communication graph 1 -- 2 -- 3)
-* DGD, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/dgd.ipynb) 
-* diffusion, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/diffusion.ipynb) 
-* DADMM, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/decentralized_admm_line3.ipynb) 
-* PG-EXTRA, see [notebook](https://github.com/cvxgrp/optimization_via_circuits/blob/main/examples/pg_extra_line3.ipynb) 
+Decentralized methods: 
+* DGD
+* diffusion 
+* DADMM
+* PG-EXTRA
 
 Please consult our [manuscript](XXX) for the details of mentioned problems. 
 

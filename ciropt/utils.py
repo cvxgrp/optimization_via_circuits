@@ -1,7 +1,6 @@
-import sympy as sp
 import numpy as np
-import gurobipy as gp
-import cvxpy as cp
+
+import matplotlib.pyplot as plt
 
 
 
@@ -227,3 +226,37 @@ def define_function(problem, mu, L_smooth, package):
     else:
         func = problem.declare_function(package.ConvexFunction) 
     return func
+
+
+def plot_methods(losses, labels, ymin, ymax, fname=""):
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+    plt.rcParams["legend.fontsize"] = 10
+    plt.rcParams["lines.linewidth"] = 2
+    plt.rcParams["lines.markersize"] = 4
+    plt.rcParams["legend.framealpha"] = 0.0
+    plt.rcParams["xtick.labelsize"] = 10
+    plt.rcParams["ytick.labelsize"] = 10
+    plt.rcParams["mathtext.fontset"] = 'cm' 
+    colors = ['dimgrey', 'deepskyblue', 'gold']
+
+    plt.figure(figsize=(5,4))
+    plt.minorticks_off()
+    plt.xscale("log")
+    plt.yscale("log")
+    i = 0
+    for loss, label in zip(losses, labels):
+        if "Circuit" in label:
+            plt.plot(loss, label=label,  color='coral', linewidth=2) 
+        else:
+            plt.plot(loss, label=label,  color=colors[i], linewidth=1) 
+            i += 1
+    plt.xlabel(r"$k$")
+    plt.ylabel(r"$|f(x^k) - f^\star|/f^\star$")
+
+    plt.ylim(ymin, ymax) 
+    plt.legend()
+    if fname:
+        plt.savefig(f'plots/freldif_{fname}.pdf', dpi=300)
+
+
