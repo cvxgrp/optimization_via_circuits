@@ -26,15 +26,15 @@ Requirements
 * sympy >= 1.12
 
 
-## Designing convergent optimization algorithms 
+# Process of optimization algorithm design
 
-### High level process
+## High level process
 1. Start with the optimization problem. 
 
 $$
 \begin{array}{ll}
 \text{minimize}& f(x)\\
-\text{subject to}& x\in \mathcal{R}(E^\intercal )
+\text{subject to}& x\in \mathcal{R}(E^\intercal ).
 \end{array}
 $$
 
@@ -51,7 +51,7 @@ Each of these, when discretized, results in a different optimization algorithm.
 Feel free to experiment with various DIs to discover new algorithms suitable for your problem at hand.
 
 
-### Hello world
+## Hello world
 See the `examples/hello_world.ipynb` notebook or explanation below.
 
 1. As a hello world example we consider the simplest problem given below, where $f$
@@ -62,6 +62,7 @@ $$
 \text{minimize}& f(x)
 \end{array}
 $$
+
 2. The optimality condition for this problem is to find $x$ such that
 $0 \in \partial f(x)$. The corresponding SI for this condition follows, see
 [circuit](./examples/figures/hello_world_si.pdf).
@@ -79,14 +80,14 @@ import ciropt as co
 problem = co.CircuitOpt()
 ```
 
-**Step 2.** Define function classes for each $f_i$. In this example there is only single function with smoothness $M=\infty$ and strong convexity $\mu=4$.
+**Step 2.** Define function classes for each $f_i$. In this example there is only single function with smoothness $M=\infty$ and strong convexity $\mu=1/2$.
 ```python3
 f = co.def_function(problem, mu, M)
 ```
 
 **Step 3.** Define optimal points.
 ```python3
-x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
+x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
 ```
 
 **Step 4.** Define discretization parameters, for simplicity take $\alpha=0$ and $\beta=1$.
@@ -138,7 +139,7 @@ $$
 \begin{align*}
 x^k &= \mathbf{prox}_{(1/2) f}(z^k ),\quad  y^k=2(z^k-x^k)\\
 w^{k+1} &= w^k - 0.331(y^k + 3w^k) \\
-z^{k+1} &= z^k - 0.165(5 y^k + 3w^k)
+z^{k+1} &= z^k - 0.165(5 y^k + 3w^k).
 \end{align*}
 $$
 
@@ -147,12 +148,12 @@ We consider the primal problem
 
 $$
 \begin{array}{ll}
-\text{minimize} & f(x) = \frac{1}{2}\sum_i
+\text{minimize} & f(x) = \sum_i
 \begin{cases}
 (x_i - c_i)^2 & |x_i-c_i| \leq 1 \\
 2(x_i-c_i)-1 & |x_i-c_i| > 1
 \end{cases} \\
-\text{subject to} & Ax = b
+\text{subject to} & Ax = b,
 \end{array}
 $$
 
@@ -168,7 +169,7 @@ We apply our discretization to solve the dual problem $g(y)$.
 Since $f$ is CCP and $2$-smooth (as a huber loss), then $f^*$ is $1/2$-strongly convex. We rescale $A$ to have $g$ $1/2$-strongly convex.
 
 
-The function value across iteration is plotted [here](./examples/figures/simple_hello_wrld.pdf).
+The relative error versus iteration is plotted [here](./examples/figures/simple_hello_wrld.pdf).
 
 ## Example notebooks
 See notebooks in `examples/` folder

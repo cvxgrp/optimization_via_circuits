@@ -38,16 +38,16 @@ def main():
     L_smooth = 1.
     mu = 0.1
     Capacitance = 2.
-    Inductance = 1.
+    Inductance = 2.
     R = 1.
 
     solver = "ipopt"
     # ciropt definitions
     problem = accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
     problem.obj = problem.b + problem.d
-    res, sol, sp_exp = problem.solve(verbose=False, solver=solver, debug=True, extra_dim=50)[:3]
+    res, sol, sp_exp = problem.solve(verbose=True, solver=solver, debug=True, extra_dim=50)[:3]
     ca_vars = problem.vars
-    print(res)
+    print(f"{res=}")
 
 
     co_vars = co.dict_parameters_ciropt(sol, ca_vars, all=True)
