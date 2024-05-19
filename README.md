@@ -155,6 +155,7 @@ $$
 \text{subject to} & Ax = b
 \end{array}
 $$
+
 and solve the dual problem
 
 $$
@@ -162,6 +163,7 @@ $$
 \text{maximize} & g(y) = -f^*(-A^T y ) - b^Ty.
 \end{array}
 $$
+
 We apply our discretization to solve the dual problem $g(y)$.
 Since $f$ is CCP and $2$-smooth (as a huber loss), then $f^*$ is $1/2$-strongly convex. We rescale $A$ to have $g$ $1/2$-strongly convex.
 
