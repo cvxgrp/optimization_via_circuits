@@ -30,6 +30,7 @@ Requirements
 
 ### High level process
 1. Start with the optimization problem. 
+
 $$
 \begin{array}{ll}
 \text{minimize}& f(x)\\
@@ -55,6 +56,7 @@ See the `examples/hello_world.ipynb` notebook or explanation below.
 
 1. As a hello world example we consider the simplest problem given below, where $f$
 is nondifferentiable but strongly convex with $\mu=1/2$.
+
 $$
 \begin{array}{ll}
 \text{minimize}& f(x)
@@ -131,6 +133,7 @@ params = problem.solve(solver="ipopt")[:1]
 ``` 
 
 The resulting provably convergent algorithm is 
+
 $$
 \begin{align*}
 x^k &= \mathbf{prox}_{(1/2) f}(z^k ),\quad  y^k=2(z^k-x^k)\\
@@ -141,6 +144,7 @@ $$
 
 5. Solve your problem using new algorithm. 
 We consider the primal problem
+
 $$
 \begin{array}{ll}
 \text{minimize} & f(x) = \frac{1}{2}\sum_i
@@ -152,6 +156,7 @@ $$
 \end{array}
 $$
 and solve the dual problem
+
 $$
 \begin{array}{ll}
 \text{maximize} & g(y) = -f^*(-A^T y ) - b^Ty.
