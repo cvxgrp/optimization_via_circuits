@@ -191,5 +191,5 @@ Since we are using Ipopt which does not solve the nonconvex optimization problem
 
 $$\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i_\mathcal{R}^1\|_{D_\mathcal{R}}^2.$$ 
 
-4. Vary the mixing weight $w$ in the objective $w\eta + \rho$, by setting `problem.obj=w*eta + rho`, which increases the descent in energy.
+4. Vary the mixing weight $w$ in the objective $w\eta + \rho$, by setting `problem.obj = eta + w*rho`, which increases the descent in energy.
 5. Change solvers in the `problem.solve` from `"ipopt", "ipopt_qcqp", "ipopt_qcqp_matrix"`.

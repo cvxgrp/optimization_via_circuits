@@ -20,7 +20,7 @@ def main():
     for solver in ["ipopt_qcqp", "ipopt_qcqp_matrix"]:
         print(f"{solver=}")
         problem = co.accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
-        problem.obj = problem.b + problem.d
+        problem.obj = problem.eta + problem.rho
         res, sol, sp_exp = problem.solve(solver=solver, verbose=False, debug=True)[:3]
 
         sp_v = np.array([1] + [sp.symbols(name) for name in problem.v_names[1:]])
@@ -34,7 +34,7 @@ def main():
             
         print("PASSED")
 
-        core_vars = sorted(['alpha', 'beta', 'h', 'b', 'd'])
+        core_vars = sorted(['alpha', 'beta', 'h', 'eta', 'rho'])
         # check coefficient matrices, ie, C @ v == \nabla l(F, G)
         v_coeffs, v_names, name2idx2, v_k_list = co.sp_v_coeff_matrix(sp_exp, core_vars)
         sp_v2 = np.array([1] + [sp.symbols(name) for name in v_names[1:]])

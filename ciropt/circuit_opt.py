@@ -31,14 +31,14 @@ class CircuitOpt(object):
 
 
     def _init_discretization_parameters(self):
-        self.b = sp.symbols('b')
-        self.d = sp.symbols('d')
+        self.eta = sp.symbols('eta')
+        self.rho = sp.symbols('rho')
         self.h = sp.symbols('h')
         self.alpha = sp.symbols('alpha')
         self.beta = sp.symbols('beta')
         self.gamma = sp.symbols('gamma')
         self.delta = sp.symbols('delta')
-        self.discretization_params = sorted(['alpha', 'beta', 'h', 'b', 'd', 'gamma', 'delta'])
+        self.discretization_params = sorted(['alpha', 'beta', 'h', 'eta', 'rho', 'gamma', 'delta'])
 
     
     def set_performance_metric( self,  perf_metric):
@@ -46,11 +46,11 @@ class CircuitOpt(object):
         The goal is to show that descent lemma holds, ie, for all one step transitions
         perf_metric is nonpositive for
             perf_metric = E_2 - (E_1 - Delta_1)
-        Delta_1 = b * (x - x^\star) * (y - y_star) + d * (R * \|i_R - i_R^\star\|^2_2)
+        Delta_1 = eta * (x - x^\star) * (y - y_star) + rho * (R * \|i_R - i_R^\star\|^2_2)
         """
         assert isinstance(perf_metric, Expression)
         self.perf_metric = perf_metric
-        self.obj = self.b
+        self.obj = self.eta
         assert check_degree_expression(self.perf_metric, 2)
 
 
@@ -86,7 +86,7 @@ class CircuitOpt(object):
         """
         Extract coefficient matrices for primal variable F (function values) and primal variable G (Gram matrix)
         that appear in objective, interlolating constraints and extra constraints
-            coefficients are linear in p = (monomials of h, alpha, beta, b, d, gamma) 
+            coefficients are linear in p = (monomials of h, alpha, beta, eta, rho, gamma) 
         sp_exp: OrderedDict() 
                 1) F/Gweights for inequalities
                     if there are extra inequalities (besides the interpolating ones), then I(extra ineq.)=1
@@ -99,7 +99,7 @@ class CircuitOpt(object):
                     sp_exp[(1, 0, i, 0)] = {"F" : Fweights_ij, "G" : Gweights_ij}
                         ith equality for function f_idx
                 3) F/Gweights for objective
-                    sp_exp["FG_d"] = {"F" : Fweights_d, "G" : Gweights_d}
+                    sp_exp["FG_obj"] = {"F" : Fweights_obj, "G" : Gweights_obj}
 
         Call p_coeffs, p_names, name2idx, _ = sp_v_coeff_matrix(sp_exp, discretization_params) to decompose
         coefficients onto vector of monomials p_names and with vector of constants p_coeffs, which dot product
@@ -154,9 +154,9 @@ class CircuitOpt(object):
         # ordered dictionary with FGweights for inequalities, FGweights for equalities, FGweights for objective
         sp_exp = sp_exp_ineq
         assert len(sp_exp) == total_I_size + total_eq_size
-        Fweights_d, Gweights_d = self._expression_to_matrix(self.perf_metric, dim_G, dim_F) 
-        sp_exp["FG_d"] = {"F" : Fweights_d, "G" : Gweights_d}
-        assert sum_ij_La.shape == Fweights_d.shape and sum_ij_AC.shape == Gweights_d.shape
+        Fweights_obj, Gweights_obj = self._expression_to_matrix(self.perf_metric, dim_G, dim_F) 
+        sp_exp["FG_obj"] = {"F" : Fweights_obj, "G" : Gweights_obj}
+        assert sum_ij_La.shape == Fweights_obj.shape and sum_ij_AC.shape == Gweights_obj.shape
         return sp_exp, total_I_size, total_eq_size, sum_ij_La, sum_ij_AC
         
     
@@ -171,8 +171,8 @@ class CircuitOpt(object):
         dim_F = Expression.counter 
         print(f"{dim_G=}, {dim_F=}")
         opti = ca.Opti()        
-        ca_vars = { 'b': opti.variable(),
-                    'd': opti.variable(),
+        ca_vars = { 'eta': opti.variable(),
+                    'rho': opti.variable(),
                     'h': opti.variable(),
                     'gamma': opti.variable(),
                     'delta': opti.variable(),
@@ -182,7 +182,7 @@ class CircuitOpt(object):
         P = ca.tril(ca_vars["P"])
         opti.subject_to( ca.diag(P) >= np.zeros((dim_G, 1)) )
         ca_add_bounds(opti, bounds, ca_vars, set())
-        opti.subject_to( ca_vars["b"] >= 0 ); opti.subject_to( ca_vars["d"] >= 0 )
+        opti.subject_to( ca_vars['eta'] >= 0 ); opti.subject_to( ca_vars['rho'] >= 0 )
         opti.subject_to( ca_vars["h"] >= 0 )
 
         list_of_leaf_functions = [function for function in Function.list_of_functions
@@ -208,8 +208,8 @@ class CircuitOpt(object):
             ca_vars["lamb%d"%(f_idx + shift_f_idx)] = lamb
             opti.subject_to( ca.reshape(lamb, (-1, 1)) >= np.zeros((size_I_function * size_I_function, 1)) )
         
-        sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_d"]["F"])
-        sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) 
+        sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_obj"]["F"])
+        sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_obj"]["G"]) 
         z1 = sympy_matrix_to_casadi(sp_z1, ca_vars, opti)
         z2 = sympy_matrix_to_casadi(sp_z2, ca_vars, opti)
         opti.subject_to( z1 == np.zeros((dim_F, 1))) 
@@ -239,8 +239,8 @@ class CircuitOpt(object):
         if debug:
             self.ca_expressions = {'sum_ij_La':sol.value(sympy_matrix_to_casadi(sum_ij_La, ca_vars, opti)),\
                                 'sum_ij_AC':sol.value(sympy_matrix_to_casadi(sum_ij_AC, ca_vars, opti)),\
-                                'Fweights_d':sol.value(sympy_matrix_to_casadi(sp_exp["FG_d"]["F"], ca_vars, opti)),\
-                                'Gweights_d':sol.value(sympy_matrix_to_casadi(sp_exp["FG_d"]["G"], ca_vars, opti)),\
+                                'Fweights_obj':sol.value(sympy_matrix_to_casadi(sp_exp["FG_obj"]["F"], ca_vars, opti)),\
+                                'Gweights_obj':sol.value(sympy_matrix_to_casadi(sp_exp["FG_obj"]["G"], ca_vars, opti)),\
                                 'z1': z1,\
                                 'z2': z2,\
                                 'P': P}
@@ -279,7 +279,7 @@ class CircuitOpt(object):
         print(f"Actual # of variables = {x_size}")
 
         ca_add_bounds(opti, bounds, ca_vars, name2idx)
-        assert v_k_list[-1] == "FG_d", print(v_k_list)
+        assert v_k_list[-1] == "FG_obj", print(v_k_list)
 
         vec_indices = { "v"   : [0, v_size - 1],\
                         "lamb": [v_size, v_size + total_I_size - 1 ], \
@@ -293,9 +293,9 @@ class CircuitOpt(object):
         vec_indices["lamb_nu"] =  [v_size, v_size + total_I_size + total_eq_size - 1 ]
         vec_lambs_nus = get_vec_var(var_x, "lamb_nu", vec_indices)
 
-        opti.subject_to(var_x[name2idx["b"]] >= 1e-7)
+        opti.subject_to(var_x[name2idx['eta']] >= 1e-7)
         opti.subject_to(var_x[name2idx["h"]] >= 1e-7)
-        opti.subject_to(var_x[name2idx["d"]] >= 1e-7)
+        opti.subject_to(var_x[name2idx['rho']] >= 1e-7)
         opti.subject_to(var_x[name2idx["gamma"]] >= 1e-7)
 
         # matrix coefficient for variable F is 0
@@ -386,7 +386,7 @@ class CircuitOpt(object):
         var_X = var_x @ var_x.T
         opti.subject_to(var_x[0] == 1)
         ca_vars = {"x": var_x}
-        assert v_k_list[-1] == "FG_d", print(v_k_list)
+        assert v_k_list[-1] == "FG_obj", print(v_k_list)
 
         print(f"Ipopt total # of variables = {np.prod(var_x1.size())}")
         print(f"Actual # of variables = {x_size}")
@@ -472,7 +472,7 @@ class CircuitOpt(object):
 
     solve_sdp_relax = solve_sdp_relax
     solve_fix_discr_sdp = solve_fix_discr_sdp
-    solve_bisection_b = solve_bisection_b
+    solve_bisection_eta = solve_bisection_eta
 
 
     def solve(self, solver="ipopt", **kwargs):
@@ -484,8 +484,8 @@ class CircuitOpt(object):
             return self.solve_ipopt_qcqp_matrix(**kwargs)
         elif solver == "fix_discr_sdp":
             return self.solve_fix_discr_sdp(**kwargs)
-        elif solver == "bisection_b":
-            return self.solve_bisection_b(**kwargs)
+        elif solver == "bisection_eta":
+            return self.solve_bisection_eta(**kwargs)
         
     @staticmethod
     def _reset_classes():

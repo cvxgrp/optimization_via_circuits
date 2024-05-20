@@ -13,7 +13,7 @@ def eval_ca_function(vars, eval_vars, func):
 def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, params=None): 
     problem = co.CircuitOpt()
     package = co_func 
-    h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+    h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
 
     func = co.define_function(problem, mu, L_smooth, package)
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
@@ -36,7 +36,7 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
 
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2 + (Inductance/2) * (i_L_1 - y_star) ** 2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2 + (Inductance/2) * (i_L_2 - y_star) ** 2
-    Delta_1 = d * R * (y_1 - i_L_1)**2 + b * (f_1 - f_star)
+    Delta_1 = rho * R * (y_1 - i_L_1)**2 + eta * (f_1 - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -52,7 +52,7 @@ def main():
     solver = "ipopt"
     # ciropt definitions
     problem = accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
-    problem.obj = problem.b + problem.d 
+    problem.obj = problem.eta + problem.rho 
     res, sol, sp_exp = problem.solve(verbose=False, debug=True, solver=solver)[:3]
     ca_vars = problem.vars
     print(f"{res=}")
@@ -67,8 +67,8 @@ def main():
 
     opti = ca.Opti()
 
-    b = opti.variable()
-    d = opti.variable()
+    eta = opti.variable()
+    rho = opti.variable()
     h = opti.variable()
     alpha = opti.variable()
     beta = opti.variable()
@@ -146,7 +146,7 @@ def main():
     assert (dim_G, dim_G) == A(1, 2).shape == B(1, 2).shape == C(1, 2).shape
     assert a(1, 2).shape == (dim_F, 1)
 
-    opti.minimize( - b - d )
+    opti.minimize( - eta - rho )
     opti.subject_to( alpha_h == alpha * h )
     opti.subject_to( beta_h == beta * h )
     opti.subject_to( alpha_h_h == alpha_h * h )
@@ -164,16 +164,16 @@ def main():
             sum_ij_La += lamb0[i, j] * a(i, j)
             sum_ij_AC += lamb0[i, j] * (A(i, j) + (1./(2 * L_smooth)) * C(i, j) + mu / (2 * (1 - mu / L_smooth)) * D(i, j))
 
-    Fweights_d = - b * a(1, 0)
-    Gweights_d = E_2 - E_1 + d * R * W_11
-    opti.subject_to( sum_ij_La - Fweights_d  == np.zeros((dim_F, 1))) 
-    opti.subject_to( sum_ij_AC  - P @ P.T - Gweights_d == np.zeros((dim_G, dim_G)))
+    Fweights_obj = - eta * a(1, 0)
+    Gweights_obj = E_2 - E_1 + rho * R * W_11
+    opti.subject_to( sum_ij_La - Fweights_obj  == np.zeros((dim_F, 1))) 
+    opti.subject_to( sum_ij_AC  - P @ P.T - Gweights_obj == np.zeros((dim_G, dim_G)))
 
     opts = {'ipopt.max_iter':50000, 'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
     opti.solver('ipopt', opts)
     sol = opti.solve()
     assert sol.stats()['success'], print(sol.stats())
-    print(sol.value(b), sol.value(h), sol.value(d), sol.value(alpha), sol.value(beta))
+    print(sol.value(eta), sol.value(h), sol.value(rho), sol.value(alpha), sol.value(beta))
 
     # compare matrices
     size_I_function = size_I
@@ -186,17 +186,17 @@ def main():
             assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}, \n{G1-G2=}")
             assert co.equal_sp_arrays(F1, F2), print(f"{i=}, {j=} \n{F1=} \n{F2=}\n")
 
-    F1, G1 = sp_exp["FG_d"]["F"], sp_exp["FG_d"]["G"]
-    F2 = sp_vars["b"] * a(1, 0)
-    G2 =  sp_E_2 - sp_E_1 + sp_vars["d"] * R * W_11
+    F1, G1 = sp_exp["FG_obj"]["F"], sp_exp["FG_obj"]["G"]
+    F2 = sp_vars["eta"] * a(1, 0)
+    G2 =  sp_E_2 - sp_E_1 + sp_vars["rho"] * R * W_11
     assert co.equal_sp_arrays(G1, G2), print(f"{G1=} \n{G2=}")
     assert co.equal_sp_arrays(-F1, F2), print(f"{F1=} \n{F2=}\n")
     print("PASSED equal symbolic expression")
 
     # compare expression evaluations 
     h_init = co_vars["h"]
-    b_init = co_vars["b"]
-    d_init = co_vars["d"]
+    b_init = co_vars["eta"]
+    d_init = co_vars["rho"]
     alpha_init = co_vars["alpha"]
     beta_init = co_vars["beta"]
     lamb_init = co_vars["lamb0"]
@@ -205,24 +205,24 @@ def main():
     alpha_h_init = alpha_init * h_init
     beta_h_init = beta_init * h_init
 
-    vars = [b, d, h, alpha, beta, alpha_h, beta_h, P_full, lamb0]
+    vars = [eta, rho, h, alpha, beta, alpha_h, beta_h, P_full, lamb0]
     eval_vars = [b_init, d_init, h_init, alpha_init, beta_init, alpha_h_init, beta_h_init, P_full_init, lamb_init]
 
-    for name in ['h', 'b', 'd', 'alpha', 'beta', 'P_full', 'lamb0']:
+    for name in ['h', 'eta', 'rho', 'alpha', 'beta', 'P_full', 'lamb0']:
         ca_g_eval = eval_ca_function(vars, eval_vars, locals()[name])
         assert np.allclose(ca_g_eval, co_vars[name]), print(name)
 
-    for name in ['sum_ij_AC', 'sum_ij_La', 'Fweights_d', 'Gweights_d']:
+    for name in ['sum_ij_AC', 'sum_ij_La', 'Fweights_obj', 'Gweights_obj']:
         ca_g_eval = eval_ca_function(vars, eval_vars, locals()[name])
         assert np.allclose(ca_g_eval, problem.ca_expressions[name]) or \
             np.allclose(np.array(ca_g_eval.full()).flatten(), problem.ca_expressions[name]), print(name)
 
     val_ca_P = eval_ca_function(vars, eval_vars, locals()['P_full'])
     sum1 = np.array((eval_ca_function(vars, eval_vars, locals()['sum_ij_AC']) \
-        - eval_ca_function(vars, eval_vars, locals()['Gweights_d']) \
+        - eval_ca_function(vars, eval_vars, locals()['Gweights_obj']) \
         - val_ca_P @ val_ca_P.T).full())
     sum2 = np.array((eval_ca_function(vars, eval_vars, locals()['sum_ij_La']) \
-        - eval_ca_function(vars, eval_vars, locals()['Fweights_d'])).full())
+        - eval_ca_function(vars, eval_vars, locals()['Fweights_obj'])).full())
 
     assert np.allclose(0, np.linalg.norm(sum1.flatten())) and np.allclose(0, np.linalg.norm(sum2.flatten()))
 

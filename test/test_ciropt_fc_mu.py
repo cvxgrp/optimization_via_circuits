@@ -17,7 +17,7 @@ def main():
 
     # Ciropt formulation
     problem = co.gradient_flow_circuit(mu, np.inf, Capacitance)
-    problem.obj = problem.b
+    problem.obj = problem.eta
     res, sol, sp_exp = problem.solve(solver=solver, debug=True, verbose=False)[:3]
     ca_vars = problem.vars
     print(res)
@@ -30,7 +30,7 @@ def main():
     dim_F = 4           # { f_star, f_1, f_1p5, f_2 }
     opti = ca.Opti()
 
-    b = opti.variable()
+    eta = opti.variable()
     h = opti.variable()
     alpha = opti.variable()
     beta = opti.variable()
@@ -76,7 +76,7 @@ def main():
     assert (dim_G, dim_G) == A(1, 2).shape == B(1, 2).shape == C(1, 2).shape
     assert a(1, 2).shape == (dim_F, 1)
 
-    opti.minimize( -b )
+    opti.minimize( -eta )
     opti.subject_to( alpha_h == alpha * h )
     opti.subject_to( beta_h == beta * h )
     opti.subject_to( ca.reshape(lamb0, (-1, 1)) >= np.zeros((size_I * size_I, 1)) )
@@ -91,16 +91,16 @@ def main():
             sum_ij_La += lamb0[i, j] * a(i, j)
             sum_ij_AC += lamb0[i, j] * (A(i, j) + (mu/2) * B(i, j))
 
-    Fweights_d = - b * a(1, 0)
-    Gweights_d = (Capacitance / 2) * (B(3, 0) - B(1, 0))
-    opti.subject_to( sum_ij_La - Fweights_d  == np.zeros((dim_F, 1))) 
-    opti.subject_to( sum_ij_AC  - P @ P.T - Gweights_d == np.zeros((dim_G, dim_G)))
+    Fweights_obj = - eta * a(1, 0)
+    Gweights_obj = (Capacitance / 2) * (B(3, 0) - B(1, 0))
+    opti.subject_to( sum_ij_La - Fweights_obj  == np.zeros((dim_F, 1))) 
+    opti.subject_to( sum_ij_AC  - P @ P.T - Gweights_obj == np.zeros((dim_G, dim_G)))
 
     opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
     opti.solver('ipopt', opts)
     sol = opti.solve()
     assert sol.stats()['success'], print(sol.stats())
-    print(sol.value(b), sol.value(h), sol.value(alpha), sol.value(beta))
+    print(sol.value(eta), sol.value(h), sol.value(alpha), sol.value(beta))
 
     # compare symbolic expressions 
     size_I_function = size_I
@@ -113,8 +113,8 @@ def main():
             assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}")
             assert co.equal_sp_arrays(F1, F2), print(f"{i=}, {j=} \n{F1=} \n{F2=}\n")
 
-    F1, G1 = sp_exp["FG_d"]["F"], sp_exp["FG_d"]["G"]
-    F2 = sp_vars["b"] * a(1, 0)
+    F1, G1 = sp_exp["FG_obj"]["F"], sp_exp["FG_obj"]["G"]
+    F2 = sp_vars["eta"] * a(1, 0)
     G2 = (Capacitance / 2) * (sp_B(3, 0) - sp_B(1, 0))
     assert co.equal_sp_arrays(G1, G2), print(f"{i=}, {j=} \n{G1=} \n{G2=}")
     assert co.equal_sp_arrays(-F1, F2), print(f"{i=}, {j=} \n{F1=} \n{F2=}\n")
@@ -122,7 +122,7 @@ def main():
 
     # compare expression evaluations 
     h_init = co_vars["h"]
-    b_init = co_vars["b"]
+    b_init = co_vars["eta"]
     alpha_init = co_vars["alpha"]
     beta_init = co_vars["beta"]
     lamb_init = co_vars["lamb0"]
@@ -131,24 +131,24 @@ def main():
     alpha_h_init = alpha_init * h_init
     beta_h_init = beta_init * h_init
 
-    vars = [b, h, alpha, beta, alpha_h, beta_h, P_full, lamb0]
+    vars = [eta, h, alpha, beta, alpha_h, beta_h, P_full, lamb0]
     eval_vars = [b_init, h_init, alpha_init, beta_init, alpha_h_init, beta_h_init, P_full_init, lamb_init]
 
-    for name in ['h', 'b', 'alpha', 'beta', 'P_full', 'lamb0']:
+    for name in ['h', 'eta', 'alpha', 'beta', 'P_full', 'lamb0']:
         ca_y_eval = eval_ca_function(vars, eval_vars, locals()[name])
         assert np.allclose(ca_y_eval, co_vars[name]), print(name)
 
-    for name in ['sum_ij_AC', 'sum_ij_La', 'Fweights_d', 'Gweights_d']:
+    for name in ['sum_ij_AC', 'sum_ij_La', 'Fweights_obj', 'Gweights_obj']:
         ca_y_eval = eval_ca_function(vars, eval_vars, locals()[name])
         assert np.allclose(ca_y_eval, problem.ca_expressions[name]) or \
             np.allclose(np.array(ca_y_eval.full()).flatten(), problem.ca_expressions[name]), print(name)
 
     val_ca_P = eval_ca_function(vars, eval_vars, locals()['P_full'])
     sum1 = np.array((eval_ca_function(vars, eval_vars, locals()['sum_ij_AC']) \
-        - eval_ca_function(vars, eval_vars, locals()['Gweights_d']) \
+        - eval_ca_function(vars, eval_vars, locals()['Gweights_obj']) \
         - val_ca_P @ val_ca_P.T).full())
     sum2 = np.array((eval_ca_function(vars, eval_vars, locals()['sum_ij_La']) \
-        - eval_ca_function(vars, eval_vars, locals()['Fweights_d'])).full())
+        - eval_ca_function(vars, eval_vars, locals()['Fweights_obj'])).full())
 
     assert np.allclose(0, np.linalg.norm(sum1.flatten())) and np.allclose(0, np.linalg.norm(sum2.flatten()))
 

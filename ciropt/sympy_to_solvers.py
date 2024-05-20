@@ -23,65 +23,6 @@ def find_lambda_nu(monomial):
     return count_lamb, count_nu, idx_lamb, idx_nu
 
 
-def gurobi_to_numpy(mat):
-    M = np.zeros(mat.shape, dtype=object)
-    for i in range(M.shape[0]):
-        if len(M.shape) == 2:
-            for j in range(M.shape[1]):
-                M[i, j] = mat[i,j] if type(mat[i,j])==float else mat[i, j].getValue()
-        else:
-            M[i] = mat[i] if type(mat[i])==float else mat[i].getValue()
-    return M
-
-
-def sympy_expression_to_gurobi(sp_expression, gp_vars, model):
-    if not isinstance(sp_expression, sp.Basic):
-        return float(sp_expression)
-    elif sp.simplify(sp_expression).free_symbols == set() or sp_expression.is_number:
-        return float(sp.simplify(sp_expression))
-    polynomial = sp.Poly(sp.simplify(sp_expression))
-    coeffs = polynomial.coeffs()
-    gp_expr = 0
-    for i, monomial in enumerate(polynomial.monoms()):
-        variables_in_monomial = []
-        for var, exp in zip(polynomial.gens, monomial):
-            variables_in_monomial += var.name.split("_") * exp
-        if variables_in_monomial != list():
-            count_lamb, count_nu, lamb_idx, nu_idx = find_lambda_nu(variables_in_monomial)
-            assert count_nu + count_lamb <= 1 # one dual variable per expression/primal constraint
-            if count_lamb > 0:
-                name = variables_in_monomial[lamb_idx]
-                variables_in_monomial.pop(lamb_idx)
-                prefix, ab, _ = name.split("|")
-                a, b = map(int, ab.split("."))
-                lamb_ab = gp_vars[prefix][a, b].item()
-                gp_monomial = lamb_ab * gp_linearize_monomial(variables_in_monomial, gp_vars, model)
-            elif count_nu > 0:
-                name = variables_in_monomial[nu_idx]
-                variables_in_monomial.pop(nu_idx)
-                prefix, ab, _ = name.split("|")
-                a, b = map(int, ab.split("."))
-                nu_ab = gp_vars[prefix][a, b].item()
-                gp_monomial = nu_ab * gp_linearize_monomial(variables_in_monomial, gp_vars, model)
-            else:
-                gp_monomial = gp_linearize_monomial(variables_in_monomial, gp_vars, model)
-        else:
-            gp_monomial = 1
-        gp_expr += float(coeffs[i]) * gp_monomial
-    return gp_expr
-
-
-def sympy_matrix_to_gurobi(sp_matrix, gp_vars, model):
-    M = np.zeros(sp_matrix.shape, dtype=object)
-    for i in range(M.shape[0]):
-        if len(M.shape) == 2:
-            for j in range(M.shape[1]):
-                M[i, j] = sympy_expression_to_gurobi(sp_matrix[i, j], gp_vars, model)
-        else:
-            M[i] = sympy_expression_to_gurobi(sp_matrix[i], gp_vars, model)
-    return M
-
-
 def sympy_expression_to_casadi_lamb(sp_expression, ca_vars, model):
     """
     Convert sympy expression to expression using casadi variables
@@ -218,3 +159,82 @@ def ca_dict_total_variable_size(ca_vars):
     for k, var in ca_vars.items():
         size += np.prod(var.size())
     return size
+
+
+
+def gurobi_to_numpy(mat):
+    M = np.zeros(mat.shape, dtype=object)
+    for i in range(M.shape[0]):
+        if len(M.shape) == 2:
+            for j in range(M.shape[1]):
+                M[i, j] = mat[i,j] if type(mat[i,j])==float else mat[i, j].getValue()
+        else:
+            M[i] = mat[i] if type(mat[i])==float else mat[i].getValue()
+    return M
+
+
+def sympy_expression_to_gurobi(sp_expression, gp_vars, model):
+    if not isinstance(sp_expression, sp.Basic):
+        return float(sp_expression)
+    elif sp.simplify(sp_expression).free_symbols == set() or sp_expression.is_number:
+        return float(sp.simplify(sp_expression))
+    polynomial = sp.Poly(sp.simplify(sp_expression))
+    coeffs = polynomial.coeffs()
+    gp_expr = 0
+    for i, monomial in enumerate(polynomial.monoms()):
+        variables_in_monomial = []
+        for var, exp in zip(polynomial.gens, monomial):
+            variables_in_monomial += var.name.split("_") * exp
+        if variables_in_monomial != list():
+            count_lamb, count_nu, lamb_idx, nu_idx = find_lambda_nu(variables_in_monomial)
+            assert count_nu + count_lamb <= 1 # one dual variable per expression/primal constraint
+            if count_lamb > 0:
+                name = variables_in_monomial[lamb_idx]
+                variables_in_monomial.pop(lamb_idx)
+                prefix, ab, _ = name.split("|")
+                a, b = map(int, ab.split("."))
+                lamb_ab = gp_vars[prefix][a, b].item()
+                gp_monomial = lamb_ab * gp_linearize_monomial(variables_in_monomial, gp_vars, model)
+            elif count_nu > 0:
+                name = variables_in_monomial[nu_idx]
+                variables_in_monomial.pop(nu_idx)
+                prefix, ab, _ = name.split("|")
+                a, b = map(int, ab.split("."))
+                nu_ab = gp_vars[prefix][a, b].item()
+                gp_monomial = nu_ab * gp_linearize_monomial(variables_in_monomial, gp_vars, model)
+            else:
+                gp_monomial = gp_linearize_monomial(variables_in_monomial, gp_vars, model)
+        else:
+            gp_monomial = 1
+        gp_expr += float(coeffs[i]) * gp_monomial
+    return gp_expr
+
+
+def sympy_matrix_to_gurobi(sp_matrix, gp_vars, model):
+    M = np.zeros(sp_matrix.shape, dtype=object)
+    for i in range(M.shape[0]):
+        if len(M.shape) == 2:
+            for j in range(M.shape[1]):
+                M[i, j] = sympy_expression_to_gurobi(sp_matrix[i, j], gp_vars, model)
+        else:
+            M[i] = sympy_expression_to_gurobi(sp_matrix[i], gp_vars, model)
+    return M
+
+
+def gp_linearize_monomial(monomial, gp_vars, model):
+    """
+    Introduce quadratic constraints to make current monomial linear w.r.t. new variables
+    """
+    if monomial == []:
+        return 1
+    monomial = sorted(monomial)
+    for i in range(len(monomial) - 1):
+        new_variable = "_".join(monomial[:i+2])
+        if new_variable not in gp_vars:
+            # store a quadratic constraint for a new variable concatenation
+            gp_vars[new_variable] = model.addVar(name=new_variable, lb=-1.*gp.GRB.INFINITY, ub=gp.GRB.INFINITY)
+            model.update()
+            model.addConstr( gp_vars[new_variable] == gp_vars["_".join(monomial[:i+1])] * gp_vars[monomial[i+1]] )
+        if i == len(monomial)-2:
+            assert "_".join(monomial) == new_variable
+    return gp_vars["_".join(monomial)]

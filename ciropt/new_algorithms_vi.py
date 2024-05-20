@@ -25,14 +25,14 @@ def dadmm_C_graph6(mus, L_smooths, R, Capacitance, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+        h, eta, rho, gamma = problem.h, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mus[0], L_smooths[0], package)
     f2 = define_function(problem, mus[0], L_smooths[0], package)
@@ -123,11 +123,11 @@ def dadmm_C_graph6(mus, L_smooths, R, Capacitance, Inductance, params=None):
             + Inductance * (i_L_46_2 + y6_star) ** 2 \
             + (Capacitance / 2) * (e_45_2 - x_star) ** 2
     # currents on resistors on each net sum to 0
-    Delta_2 = d * ((2/R) * ((e_12_2 - x1_2)**2 + (e_13_2 - x3_2)**2 \
+    Delta_2 = rho * ((2/R) * ((e_12_2 - x1_2)**2 + (e_13_2 - x3_2)**2 \
                          + (e_23_2 - x2_2)**2 + (e_24_2 - x2_2)**2 \
                          + (e_34_2 - x4_2)**2  + (e_46_2 - x6_2)**2 )  \
                     + (1/R) * ((e_45_2 - x5_2)**2 + (e_45_2 - x4_2)**2)) \
-              + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
+              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
                     + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
                     + f3_2 - f3_star - y3_star * (x3_2 - x_star) \
                     + f4_2 - f4_star - y4_star * (x4_2 - x_star) \
@@ -150,14 +150,14 @@ def dadmm_C6_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+        h, eta, rho, gamma = problem.h, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -265,11 +265,11 @@ def dadmm_C6_graph6(mu, L_smooth, R, Capacitance, Inductance, params=None):
                             + (i_L_46_2 + y6_star) ** 2 + (i_L_64_2 - y6_star) ** 2)
     
     # currents on resistors on each net sum to 0
-    Delta_2 = d * ((1/R) * ((e_12_2 - x1_2)**2 + (e_13_2 - x3_2)**2 \
+    Delta_2 = rho * ((1/R) * ((e_12_2 - x1_2)**2 + (e_13_2 - x3_2)**2 \
                          + (e_23_2 - x2_2)**2 + (e_24_2 - x2_2)**2 \
                          + (e_34_2 - x4_2)**2  + (e_46_2 - x6_2)**2   \
                          + (e_45_2 - x5_2)**2 + (e_45_2 - x4_2)**2)) \
-              + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
+              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
                     + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
                     + f3_2 - f3_star - y3_star * (x3_2 - x_star) \
                     + f4_2 - f4_star - y4_star * (x4_2 - x_star) \
@@ -289,13 +289,13 @@ def example_fC3RC_circuit(mu, L_smooth, Capacitance, R, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
     func = define_function(problem, mu, L_smooth, package )
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
@@ -324,8 +324,8 @@ def example_fC3RC_circuit(mu, L_smooth, Capacitance, R, params=None):
     e1_1 = (e2_1 - R * y_1) / 2
     E_1 = (Capacitance/2) * (v_C1_1 + x_star)**2 + (Capacitance/2) * (v_C2_1)**2
     E_2 = (Capacitance/2) * (v_C1_2 + x_star)**2 + (Capacitance/2) * (v_C2_2)**2
-    Delta_1 = b * (x_1 - x_star) * (y_1 - y_star) \
-            + d * (1/R) * ((e1_1)**2 + (e1_1 - e2_1)**2 + (e2_1)**2)
+    Delta_1 = eta * (x_1 - x_star) * (y_1 - y_star) \
+            + rho * (1/R) * ((e1_1)**2 + (e1_1 - e2_1)**2 + (e2_1)**2)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -336,13 +336,13 @@ def example_fCR_circuit(mu, L_smooth, Capacitance, R, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
     func = define_function(problem, mu, L_smooth, package )
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
@@ -358,6 +358,6 @@ def example_fCR_circuit(mu, L_smooth, Capacitance, R, params=None):
 
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2
-    Delta_1 = b * (x_1 - x_star) * (y_1 - y_star) + d * R * (y_1)**2
+    Delta_1 = eta * (x_1 - x_star) * (y_1 - y_star) + rho * R * (y_1)**2
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem

@@ -18,12 +18,12 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
         # verification mode: PEP
         problem = PEPit.PEP()
         package = pep_func
-        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"]
+        h, alpha, beta, eta = params["h"], params["alpha"], params["beta"], params["eta"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
-        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
+        h, alpha, beta, eta = problem.h, problem.alpha, problem.beta, problem.eta
     func = define_function(problem, mu, L_smooth, package )
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
@@ -38,8 +38,7 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
 
     E_1 = (Capacitance/2) * (x_1 - x_star)**2
     E_2 = (Capacitance/2) * (x_2 - x_star)**2
-    Delta_1 = b * (f_1 - f_star)
-    # Delta_1 = b * (x_1 - x_star) * (y_1 - y_star)
+    Delta_1 = eta * (f_1 - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -50,13 +49,13 @@ def ppm_circuit(mu, L_smooth, Capacitance, R, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
     func = define_function(problem, mu, L_smooth, package )
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
@@ -75,7 +74,7 @@ def ppm_circuit(mu, L_smooth, Capacitance, R, params=None):
 
     E_1 = (Capacitance/2) * (x_1 - x_star)**2
     E_2 = (Capacitance/2) * (x_2 - x_star)**2
-    Delta_1 = b * (f_2 - f_star) + d * R * (i_R_1 - y_star)**2
+    Delta_1 = eta * (f_2 - f_star) + rho * R * (i_R_1 - y_star)**2
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -85,12 +84,12 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
         # verification mode: PEP
         problem = PEPit.PEP()
         package = pep_func
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
 
     func = define_function(problem, mu, L_smooth, package)
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
@@ -113,7 +112,7 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
 
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2 + (Inductance/2) * (i_L_1 - y_star) ** 2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2 + (Inductance/2) * (i_L_2 - y_star) ** 2
-    Delta_1 = d * R * (y_1 - i_L_1)**2 + b * (f_1 - f_star)
+    Delta_1 = rho * R * (y_1 - i_L_1)**2 + eta * (f_1 - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -124,13 +123,13 @@ def prox_gradient_circuit(mu, L_smooth, R, Capacitance, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, b, d = params["h"], params["b"], params["d"]
+        h, eta, rho = params["h"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step
-        h, b, d = problem.h, problem.b, problem.d
+        h, eta, rho = problem.h, problem.eta, problem.rho
 
     f = define_function(problem, mu, L_smooth, package)
     g = define_function(problem, 0, np.inf, package)
@@ -155,7 +154,7 @@ def prox_gradient_circuit(mu, L_smooth, R, Capacitance, params=None):
     E_1 = (Capacitance / 2) * (e_1 - e_star)**2 
     E_2 = (Capacitance / 2) * (e_2 - e_star)**2 
 
-    Delta_1 = b * (1/L_smooth - R) * (y2_1 - y2_star)**2 + d * R * (nabla_R_g_e1 - y1_star)**2 
+    Delta_1 = eta * (1/L_smooth - R) * (y2_1 - y2_star)**2 + rho * R * (nabla_R_g_e1 - y1_star)**2 
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
@@ -166,12 +165,12 @@ def dual_decomposition(n_func, mu, L_smooth, Inductance, params=None):
         # verification mode: PEP
         problem = PEPit.PEP() 
         package = pep_func 
-        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"]
+        h, alpha, beta, eta = params["h"], params["alpha"], params["beta"], params["eta"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
-        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
+        h, alpha, beta, eta = problem.h, problem.alpha, problem.beta, problem.eta
 
     fs = [0] * n_func
     for i in range(n_func):
@@ -221,7 +220,7 @@ def dual_decomposition(n_func, mu, L_smooth, Inductance, params=None):
     for i in range(n_func):
         E_1 += (Inductance/2) * (i_L_1[i] - ys_star[i])**2
         E_2 += (Inductance/2) * (i_L_2[i] - ys_star[i])**2
-        Delta_1 += b * ((xs_1[i] - x_star) * (i_L_1[i] - ys_star[i]))
+        Delta_1 += eta * ((xs_1[i] - x_star) * (i_L_1[i] - ys_star[i]))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -231,12 +230,12 @@ def primal_decomposition(n_func, mu, L_smooth, Capacitance, params=None):
         # verification mode: PEP
         problem = PEPit.PEP() 
         package = pep_func 
-        h, alpha, beta, b = params["h"], params["alpha"], params["beta"], params["b"]
+        h, alpha, beta, eta = params["h"], params["alpha"], params["beta"], params["eta"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
-        h, alpha, beta, b = problem.h, problem.alpha, problem.beta, problem.b
+        h, alpha, beta, eta = problem.h, problem.alpha, problem.beta, problem.eta
 
     fs = [0] * n_func
     for i in range(n_func):
@@ -262,7 +261,7 @@ def primal_decomposition(n_func, mu, L_smooth, Capacitance, params=None):
 
     E_1 = (Capacitance/2) * (z_1 - x_star)**2
     E_2 = (Capacitance/2) * (z_2 - x_star)**2
-    Delta_1 = b * ((z_1 - x_star) * (sum_y_1 - y_star))
+    Delta_1 = eta * ((z_1 - x_star) * (sum_y_1 - y_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -274,14 +273,14 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -310,9 +309,8 @@ def douglas_rachford_splitting(mu, L_smooth, R, Inductance, params=None):
     E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (x2_1 - x_star)**2
     E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (x2_2 - x_star)**2
 
-    Delta_1 = d * R * (y1_1 - i_L_1)**2 \
-              + b * (f1_1 + f2_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
-    # Delta_1 = b * (f1_1 + f2_1 - f_star)
+    Delta_1 = rho * R * (y1_1 - i_L_1)**2 \
+              + eta * (f1_1 + f2_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -324,14 +322,14 @@ def davis_yin_splitting(mu, L_smooth, R, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -372,8 +370,8 @@ def davis_yin_splitting(mu, L_smooth, R, Inductance, params=None):
     E_1 = (Inductance/2) * (i_L_1 - y1_star) ** 2 + gamma * (e_1 - e_star)**2  
     E_2 = (Inductance/2) * (i_L_2 - y1_star) ** 2 + gamma * (e_2 - e_star)**2  
 
-    Delta_1 = d * (1 / R) * (x1_1 - x2_1)**2 \
-              + b * (f1_1 + f2_1 + f3_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - y3_star * (x2_1 - x_star) - f_star)
+    Delta_1 = rho * (1 / R) * (x1_1 - x2_1)**2 \
+              + eta * (f1_1 + f2_1 + f3_1 - y1_star * (x1_1 - x_star) - y2_star * (x2_1 - x_star) - y3_star * (x2_1 - x_star) - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -385,14 +383,14 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         package = pep_func
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
 
     fs = [0] * n_func
     for i in range(n_func):
@@ -443,15 +441,12 @@ def admm_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
 
     E_1 = gamma * (e_1 - x_star)**2
     E_2 = gamma * (e_2 - x_star)**2
-    # E_1 = 0; E_2 = 0
-    Delta_1 = - b * f_star
+    Delta_1 = - eta * f_star
     for i in range(n_func):
         E_1 += (Inductance/2) * (i_Ls_1[i] - ys_star[i]) ** 2
         E_2 += (Inductance/2) * (i_Ls_2[i] - ys_star[i]) ** 2
-        # Delta_1 += d * R * (triplets_2[i][1] - i_Ls_1[i])**2 \
-        #           + b *( triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
-        Delta_1 += d * R * (triplets_2[i][1] - i_Ls_2[i])**2 \
-                    + b *( triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
+        Delta_1 += rho * R * (triplets_2[i][1] - i_Ls_2[i])**2 \
+                    + eta * (triplets_2[i][2] - ys_star[i] * (triplets_2[i][0] - x_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -463,14 +458,14 @@ def admm_euler_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
         package = pep_func
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d = params["h"], params["b"], params["d"]
+        h, eta, rho = params["h"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, b, d = problem.h, problem.b, problem.d
+        h, eta, rho = problem.h, problem.eta, problem.rho
 
     fs = [0] * n_func
     for i in range(n_func):
@@ -508,12 +503,12 @@ def admm_euler_consensus(n_func, mu, L_smooth, R, Inductance, params=None):
     problem.add_constraint(Constraint( (e_1 - sum_xi_1) ** 2, "equality"))
 
     E_1 = 0; E_2 = 0
-    Delta_1 = - b * f_star
+    Delta_1 = - eta * f_star
     for i in range(n_func):
         E_1 += (Inductance/2) * (i_Ls_1[i] - ys_star[i]) ** 2
         E_2 += (Inductance/2) * (i_Ls_2[i] - ys_star[i]) ** 2
-        Delta_1 += d * R * (triplets_1[i][1] - i_Ls_1[i]) ** 2 \
-                 + b *( triplets_1[i][2] - ys_star[i] * (triplets_1[i][0] - x_star))
+        Delta_1 += rho * R * (triplets_1[i][1] - i_Ls_1[i]) ** 2 \
+                 + eta *( triplets_1[i][2] - ys_star[i] * (triplets_1[i][0] - x_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -524,13 +519,13 @@ def admm_consensus_proof(mu, L_smooth, R, Inductance, params=None):
         problem = PEPit.PEP()
         package = pep_func
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, eta, rho = params["h"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, eta, rho = problem.h, problem.eta, problem.rho
 
     rho = 1 / R
     f = define_function(problem, mu, L_smooth, package)
@@ -551,7 +546,7 @@ def admm_consensus_proof(mu, L_smooth, R, Inductance, params=None):
 
     E_1 = (1/rho) * (y1_1 + y1_star)**2 + (1/rho) * (y2_1 + y2_star)**2 + 2 * rho * (z1 - x_star)**2 
     E_2 = (1/rho) * (y1_2 + y1_star)**2 + (1/rho) * (y2_2 + y2_star)**2 + 2 * rho * (z2 - x_star)**2 
-    Delta_1 = b * (rho * (x1_2 - z2)**2 + rho * (x2_2 - z2)**2) + d * rho * (z1 - z2)**2 
+    Delta_1 = eta * (rho * (x1_2 - z2)**2 + rho * (x2_2 - z2)**2) + rho * rho * (z1 - z2)**2 
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem

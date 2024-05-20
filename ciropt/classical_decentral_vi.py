@@ -23,14 +23,14 @@ def decentralized_admm_cycle4(mu, L_smooth, R, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+        h, eta, rho, gamma = problem.h, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -88,9 +88,9 @@ def decentralized_admm_cycle4(mu, L_smooth, R, Inductance, params=None):
             + Inductance * (i_L_12_2 - y1_12_star) ** 2 + Inductance * (i_L_23_2 - y2_23_star) ** 2 \
             + Inductance * (i_L_34_2 - y3_34_star) ** 2 + Inductance * (i_L_41_2 + y1_14_star) ** 2
     # currents on resistors on each net sum to 0
-    Delta_2 = d * (2/R) * ((e_12_2 - x1_2)**2 + (e_23_2 - x2_2)**2 \
+    Delta_2 = rho * (2/R) * ((e_12_2 - x1_2)**2 + (e_23_2 - x2_2)**2 \
                          + (e_34_2 - x4_2)**2 + (e_41_2 - x1_2)**2 )  \
-              + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
+              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
                     + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
                     + f3_2 - f3_star - y3_star * (x3_2 - x_star) \
                     + f4_2 - f4_star - y4_star * (x4_2 - x_star))
@@ -110,14 +110,14 @@ def decentralized_admm_graph6(mu, L_smooth, R, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
+        h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, b, d, gamma = problem.h, problem.b, problem.d, problem.gamma
+        h, eta, rho, gamma = problem.h, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -200,10 +200,10 @@ def decentralized_admm_graph6(mu, L_smooth, R, Inductance, params=None):
             + Inductance * (i_L_34_2 - y3_34_star) ** 2 + Inductance * (i_L_45_2 + y5_star) ** 2 \
             + Inductance * (i_L_46_2 + y6_star) ** 2  
     # currents on resistors on each net sum to 0
-    Delta_2 = d * (2/R) * ((e_12_2 - x1_2)**2 + (e_13_2 - x3_2)**2 \
+    Delta_2 = rho * (2/R) * ((e_12_2 - x1_2)**2 + (e_13_2 - x3_2)**2 \
                          + (e_23_2 - x2_2)**2 + (e_24_2 - x2_2)**2 \
                          + (e_34_2 - x4_2)**2 + (e_45_2 - x5_2)**2 + (e_46_2 - x6_2)**2 )  \
-              + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
+              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star) \
                     + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
                     + f3_2 - f3_star - y3_star * (x3_2 - x_star) \
                     + f4_2 - f4_star - y4_star * (x4_2 - x_star) \
@@ -222,14 +222,14 @@ def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth_f, package)
     f2 = define_function(problem, mu, L_smooth_f, package)
@@ -288,10 +288,10 @@ def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
         + (L_12/2) * (i_L_12_3 - i_L_12_star) ** 2  + (L_23/2) * (i_L_23_3 - i_L_23_star) ** 2  
  
     # Delta
-    Delta_2 = b * ( (y_f1_2 - y_f1_star) * (x1_2 - x_star) \
+    Delta_2 = eta * ( (y_f1_2 - y_f1_star) * (x1_2 - x_star) \
                 + (y_f2_2 - y_f2_star) * (x2_2 - x_star) \
                 + (y_f3_2 - y_f3_star) * (x3_2 - x_star) ) \
-            + d *( (y_h1_1 - y_h1_star) * (x1_1 - x_star)  \
+            + rho *( (y_h1_1 - y_h1_star) * (x1_1 - x_star)  \
                 + (y_h2_1 - y_h2_star) * (x2_1 - x_star) \
                 + (y_h3_1 - y_h3_star) * (x3_1 - x_star) )
 
@@ -307,15 +307,15 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        # h, b, d, gamma = params["h"], params["b"], params["d"], params["gamma"]
-        h, alpha, beta, b, d, gamma = params["h"], params["alpha"], params["beta"], params["b"], params["d"], params["gamma"]
+        # h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step 
-        h, alpha, beta, b, d, gamma = problem.h, problem.alpha, problem.beta, problem.b, problem.d, problem.gamma
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -372,9 +372,9 @@ def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
         + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
         + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2  
     
-    Delta_2 = d * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
+    Delta_2 = rho * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
                          + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
-              + b * ( f1_2 - f1_star - y1_star * (x1_2 - x_star)\
+              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star)\
                     + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
                     + f3_2 - f3_star - y3_star * (x3_2 - x_star))
 
@@ -395,14 +395,14 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -444,8 +444,8 @@ def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
     E_1 = (Capacitance/2) * ((e1_1 - e1_star)**2 + (e2_1 - e2_star)**2 + (e3_1 - e3_star)**2)
     E_2 = (Capacitance/2) * ((e1_2 - e1_star)**2 + (e2_2 - e2_star)**2 + (e3_2 - e3_star)**2) 
 
-    Delta_1 = d * (1 / (3 * R)) * ((e1_1 - e2_1 - (e1_star - e2_star))**2 + (e3_1 - e2_1 - (e3_star - e2_star))**2) + \
-              b * (1/L_smooth - R) * ((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2)
+    Delta_1 = rho * (1 / (3 * R)) * ((e1_1 - e2_1 - (e1_star - e2_star))**2 + (e3_1 - e2_1 - (e3_star - e2_star))**2) + \
+              eta * (1/L_smooth - R) * ((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 
@@ -457,14 +457,14 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
         package = pep_func 
         Constraint = pep_constr
         proximal_step = pep_proximal_step
-        h, alpha, beta, b, d = params["h"], params["alpha"], params["beta"], params["b"], params["d"]
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
     else:
         # Ciropt mode
         problem = CircuitOpt()
         package = co_func
         Constraint = co_constr
         proximal_step = co_func.proximal_step
-        h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
 
     f1 = define_function(problem, mu, L_smooth, package)
     f2 = define_function(problem, mu, L_smooth, package)
@@ -495,8 +495,8 @@ def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=No
     E_1 = (Capacitance/2) * ((x1_1 - x1_star)**2 + (x2_1 - x2_star)**2 + (x3_1 - x3_star)**2)
     E_2 = (Capacitance/2) * ((x1_2 - x1_star)**2 + (x2_2 - x2_star)**2 + (x3_2 - x3_star)**2) 
 
-    Delta_2 = d * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
-              b * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) 
+    Delta_2 = rho * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
+              eta * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) 
                                                         + (x3_2 - x3_star) * (y3_2 - y3_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem

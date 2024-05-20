@@ -1,6 +1,5 @@
 import numpy as np
 import scipy
-import gurobipy as gp
 import cvxpy as cp
 
 from ciropt.point import Point
@@ -49,9 +48,9 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
                     var_X[:1, :] == var_x.T ]
     cvx_vars = { "Z": var_Z,  "x": var_x, "X": var_X}
 
-    constraints += [ var_x[name2idx["b"]] >= 0.00001, \
+    constraints += [ var_x[name2idx["eta"]] >= 0.00001, \
                         var_x[name2idx["h"]] >= 0.00001, \
-                        var_x[name2idx["d"]] >= 0]
+                        var_x[name2idx["rho"]] >= 0]
     # constraints to encode X >> xx^T
     constraints += [W[ : x_size, : x_size] == var_X, \
                     W[x_size : x_size+1, : x_size] == var_x.T, \
@@ -75,7 +74,7 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
                         var_x[0] == 1 
                     ]
 
-    assert v_k_list[-1] == "FG_d", print(v_k_list)
+    assert v_k_list[-1] == "FG_obj", print(v_k_list)
 
     vec_indices = { "v"   : [0, v_size - 1],\
                     "lamb": [v_size, v_size + total_I_size - 1 ],
@@ -168,9 +167,9 @@ def solve_sdp_relax(self, verbose=True, var_bound=None, debug=False, bounds=None
     return res, prob, sp_exp
     
 
-def solve_bisection_b(self, freq=20, params=None, max_iters=30, cvx_solver=cp.CLARABEL, **kwargs):
+def solve_bisection_eta(self, freq=20, params=None, max_iters=30, cvx_solver=cp.CLARABEL, **kwargs):
         # given discretization parameters in params
-        # do bisection on b by checking if the resulting SDP subject to params and b
+        # do bisection on eta by checking if the resulting SDP subject to params and eta
         # is feasible
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -182,21 +181,21 @@ def solve_bisection_b(self, freq=20, params=None, max_iters=30, cvx_solver=cp.CL
         v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
         inputs = (v_coeffs, v_names, v_k_list, name2idx, total_I_size, total_eq_size, sp_exp)
 
-        b = params["b"] if "b" in params else 10.
+        eta = params["eta"] if "eta" in params else 10.
         for t in range(max_iters):
-            params["b"] = b
+            params["eta"] = eta
             try:
                 prob = self.solve_fix_discr_sdp(params=params, cvx_solver=cvx_solver, inputs=inputs, verbose=False)[1]
-                if t % freq == 0: print(f"{t=}, {b=}, {prob.status=}")
+                if t % freq == 0: print(f"{t=}, {eta=}, {prob.status=}")
                 if prob.status == 'optimal':
-                    return params, b
+                    return params, eta
             except: pass
-            b /= 2
-        return params, b
+            eta /= 2
+        return params, eta
 
 
 def solve_fix_discr_sdp(self, params=None, cvx_solver=cp.CLARABEL, verbose=True, debug=False, inputs=None, **kwargs):
-        # for fixed alpha, beta, h, b, d, gamma 
+        # for fixed alpha, beta, h, eta, rho, gamma 
         # solve the corresponding SDP
         dim_G = Point.counter
         dim_F = Expression.counter 
@@ -221,7 +220,7 @@ def solve_fix_discr_sdp(self, params=None, cvx_solver=cp.CLARABEL, verbose=True,
         var_lambda_nu = cp.Variable((lambda_size + nu_size, 1))
         Z = cp.Variable((dim_G, dim_G), PSD=True)
         constraints = [ var_lambda_nu[:lambda_size] >= 0]
-        assert v_k_list[-1] == "FG_d", print(v_k_list)
+        assert v_k_list[-1] == "FG_obj", print(v_k_list)
 
         # matrix coefficient for variable F is 0
         obj_F = np.concatenate([v_coeffs["F"][-1], np.zeros((dim_F, v_size - v_coeffs["F"][-1].shape[1]))], axis=1)
@@ -249,22 +248,105 @@ def solve_fix_discr_sdp(self, params=None, cvx_solver=cp.CLARABEL, verbose=True,
         self.vars = {"Z" : Z.value, "lambdas_nus" : var_lambda_nu.value}
         self.vars.update(params)
         return self.vars, prob, sp_exp
-   
 
-def gp_linearize_monomial(monomial, gp_vars, model):
+
+def solve_gp(self, verbose=True, debug=False, time_limit=1000, ftol=1e-9, heur=0.001, method=0, bounds=None, **kwargs):
     """
-    Introduce quadratic constraints to make current monomial linear w.r.t. new variables
+    Use gurobipy branch-and-bound to solve a QCQP
+        keep all the variables separately, without forming a unified (vectorized) variable
     """
-    if monomial == []:
-        return 1
-    monomial = sorted(monomial)
-    for i in range(len(monomial) - 1):
-        new_variable = "_".join(monomial[:i+2])
-        if new_variable not in gp_vars:
-            # store a quadratic constraint for a new variable concatenation
-            gp_vars[new_variable] = model.addVar(name=new_variable, lb=-1.*gp.GRB.INFINITY, ub=gp.GRB.INFINITY)
+    try:
+        import gurobipy as gp
+    except ImportError:
+        raise Exception("Gurobi package is not installed.")
+    dim_G = Point.counter
+    dim_F = Expression.counter 
+    print(f"{dim_G=}, {dim_F=}")
+    model = gp.Model() 
+
+    gp_vars = { 'eta': model.addVar(name='eta', lb=0., ub=1000.),
+                'rho': model.addVar(name='rho', lb=0., ub=1000.),
+                'h': model.addVar(name='h', lb=0., ub=1000.),
+                'gamma': model.addVar(name='gamma', lb=0., ub=1000.),
+                'alpha': model.addVar(name='alpha', lb=-1., ub=1.),
+                'beta': model.addVar(name='beta', lb=-1., ub=1.),  
+                'P': model.addMVar((dim_G, dim_G), name='P', lb=-1000, ub=1000)  }
+    model.update()
+    if bounds is not None:
+        for name in bounds.keys():
+            if not name in gp_vars: continue
+            if "ub" in bounds[name]:
+                model.addConstr( gp_vars[name] <= bounds[name]["ub"] )
+            if "lb" in bounds[name]:
+                model.addConstr( gp_vars[name] >= bounds[name]["lb"] )
+    # P is lower triangular
+    model.addConstr( gp_vars["P"].diagonal() >= np.zeros(dim_G) )
+    for i in range(dim_G):
+        for j in range(i + 1, dim_G):
+            model.addConstr( gp_vars["P"][i, j] == 0 )
+
+    list_of_leaf_functions = [function for function in Function.list_of_functions
+                                if function.get_is_leaf()]
+    sp_exp, total_I_size, total_eq_size, sum_ij_La, sum_ij_AC = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)
+    shift_f_idx = 0; ineq_size = 0; eq_size = 0
+    if self.list_of_constraints != list():
+        eq_size = total_eq_size
+        ineq_size = len(self.list_of_constraints) - total_eq_size
+        if ineq_size >= 1:
+            shift_f_idx = 1
+            name = "lamb0"
+            gp_vars[name] = model.addMVar((ineq_size, 1), name=name, lb=0, ub=1000)
             model.update()
-            model.addConstr( gp_vars[new_variable] == gp_vars["_".join(monomial[:i+1])] * gp_vars[monomial[i+1]] )
-        if i == len(monomial)-2:
-            assert "_".join(monomial) == new_variable
-    return gp_vars["_".join(monomial)]
+        if eq_size >= 1:
+            name = "nu0"
+            gp_vars[name] = model.addMVar((eq_size, 1), name=name, lb=-1000, ub=1000)
+            model.update()
+
+    for f_idx, function in enumerate(list_of_leaf_functions):
+        name = "lamb%rho"%(f_idx + shift_f_idx)
+        size_I_function = len(function.list_of_points)
+        gp_vars[name] = model.addMVar((size_I_function, size_I_function), name=name, lb=0, ub=1000)
+        model.update()
+        if bounds is not None and name in bounds:
+            if "ub" in bounds[name]:
+                model.addConstr( gp_vars[name] <= bounds[name]["ub"] )
+            if "lb" in bounds[name]:
+                model.addConstr( gp_vars[name] >= bounds[name]["lb"] )
+        # model.addConstr( gp_vars[name].diagonal() == np.zeros(size_I_function) )
+
+    assert sum_ij_La.shape == sp_exp["FG_obj"]["F"].shape and sum_ij_AC.shape == sp_exp["FG_obj"]["G"].shape
+    sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_obj"]["F"])
+    sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_obj"]["G"]) 
+    z1 = sympy_matrix_to_gurobi(sp_z1, gp_vars, model)
+    z2 = sympy_matrix_to_gurobi(sp_z2, gp_vars, model)
+    PPt = gp_vars["P"] @ gp_vars["P"].T
+    model.addConstrs(z1[i] == 0 for i in range(dim_F))
+    model.addConstrs(z2[i, j] - PPt[i, j].item() == 0 for i in range(dim_G) for j in range(dim_G))
+    if not verbose:
+        model.Params.LogToConsole = 0
+    # model.setObjective( - gp_vars["eta"] - gp_vars["rho"] )
+    model.update()
+    model.setObjective( -sympy_expression_to_gurobi(self.obj, gp_vars, model), gp.GRB.MINIMIZE)
+    model.Params.NonConvex = 2
+    model.Params.TimeLimit = time_limit
+    model.Params.FeasibilityTol = ftol
+    model.Params.Method = method
+    model.Params.PoolSearchMode = 1
+    model.Params.Heuristics = heur
+    # model.tune()
+    # for i in range(model.tuneResultCount):
+    #     model.getTuneResult(i)
+    #     model.write('tune'+str(i)+'.prm')
+    model.update()  
+    model.optimize()
+    if debug:
+        self.gp_expressions = {'z1': z1,\
+                            'z2': z2,\
+                            'P': gp_vars["P"], \
+                            'sum_ij_La':sympy_matrix_to_gurobi(simplify_matrix(sum_ij_La), gp_vars, model), \
+                            'sum_ij_AC':sympy_matrix_to_gurobi(simplify_matrix(sum_ij_AC), gp_vars, model), \
+                            'Fweights_obj':sympy_matrix_to_gurobi(simplify_matrix(sp_exp["FG_obj"]["F"]), gp_vars, model), \
+                            'Gweights_obj':sympy_matrix_to_gurobi(simplify_matrix(sp_exp["FG_obj"]["G"]), gp_vars, model) }
+    self.model = model
+    self.vars = gp_vars
+    return dict_parameters_ciropt_gp(model, gp_vars), model, sp_exp
