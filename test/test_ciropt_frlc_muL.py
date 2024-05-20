@@ -5,27 +5,34 @@ import sympy as sp
 import ciropt.function as co_func
 
 
-def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance): 
+def eval_ca_function(vars, eval_vars, func):
+        g_func = ca.Function('g_func', vars, [func])
+        return g_func(*eval_vars)
+
+
+def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, params=None): 
     problem = co.CircuitOpt()
-    package = co_func
-    proximal_step = co_func.proximal_step
+    package = co_func 
     h, alpha, beta, b, d = problem.h, problem.alpha, problem.beta, problem.b, problem.d
 
-    func = co.define_function(problem, mu, L_smooth, package )
+    func = co.define_function(problem, mu, L_smooth, package)
     x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
 
     v_C_1 = problem.set_initial_point()
     i_L_1 = problem.set_initial_point()
-    x_1, y_1, f_1 = proximal_step((R * i_L_1 + v_C_1), func, R)
+    x_1 = R * i_L_1 + v_C_1
+    y_1, f_1 = func.oracle(x_1)
 
-    i_L_1p5 = i_L_1 + (alpha * h / Inductance) * (v_C_1 - x_1) 
+    i_L_1p5 = i_L_1 + (alpha * h / Inductance) * (v_C_1 - (x_1 - R * y_1)) 
     v_C_1p5 = v_C_1 - (alpha * h / Capacitance) * y_1 
-    x_1p5, y_1p5, f_1p5 = proximal_step((R * i_L_1p5 + v_C_1p5), func, R)
+    x_1p5 = R * i_L_1p5 + v_C_1p5
+    y_1p5, f_1p5 = func.oracle(x_1p5)
 
-    i_L_2 = i_L_1 + (beta * h / Inductance) * (v_C_1 - x_1) + \
-                    ((1 - beta) * h / Inductance) * (v_C_1p5 - x_1p5)
+    i_L_2 = i_L_1 + (beta * h / Inductance) * (v_C_1 - (x_1 - R * y_1)) + \
+                    ((1 - beta) * h / Inductance) * (v_C_1p5 - (x_1p5 - R * y_1p5))
     v_C_2 = v_C_1 - (beta * h / Capacitance) * y_1 - ((1 - beta) * h / Capacitance) * y_1p5  
-    x_2, y_2, f_2 = proximal_step((R * i_L_2 + v_C_2), func, R)
+    x_2 = R * i_L_2 + v_C_2
+    y_2, f_2 = func.oracle(x_2)
 
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2 + (Inductance/2) * (i_L_1 - y_star) ** 2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2 + (Inductance/2) * (i_L_2 - y_star) ** 2
@@ -34,9 +41,10 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance):
     return problem
 
 
+
 def main():
     L_smooth = 1.
-    mu = 0.1
+    mu = 0.0001
     Capacitance = 2.
     Inductance = 2.
     R = 1.
@@ -44,8 +52,8 @@ def main():
     solver = "ipopt"
     # ciropt definitions
     problem = accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance)
-    problem.obj = problem.b + problem.d
-    res, sol, sp_exp = problem.solve(verbose=True, solver=solver, debug=True, extra_dim=50)[:3]
+    problem.obj = problem.b + problem.d 
+    res, sol, sp_exp = problem.solve(verbose=False, debug=True, solver=solver)[:3]
     ca_vars = problem.vars
     print(f"{res=}")
 
@@ -121,9 +129,9 @@ def main():
     D = lambda i,j: co.symm_prod(Xs[i] - Xs[j] - (1/L_smooth) * (Gs[i] - Gs[j]))
     W_11 = co.symm_prod(Gs[1] - i_L_1, Gs[1] - i_L_1) 
     E_1 = (Capacitance / 2) * (co.symm_prod(v_C_1 - x_star, v_C_1 - x_star)) \
-        +(Inductance / 2) * (co.symm_prod(i_L_1 - g_star, i_L_1 - g_star))
+            +(Inductance / 2) * (co.symm_prod(i_L_1 - g_star, i_L_1 - g_star))
     E_2 = (Capacitance / 2) * (co.symm_prod(v_C_2 - x_star, v_C_2 - x_star)) \
-        +(Inductance / 2) * (co.symm_prod(i_L_2 - g_star, i_L_2 - g_star))                      
+            +(Inductance / 2) * (co.symm_prod(i_L_2 - g_star, i_L_2 - g_star))                      
     a = lambda i,j: F[j] - F[i]
 
     sp_A = lambda i,j: co.symm_prod(Gs[j], sp_Xs[i] - sp_Xs[j])
@@ -161,8 +169,7 @@ def main():
     opti.subject_to( sum_ij_La - Fweights_d  == np.zeros((dim_F, 1))) 
     opti.subject_to( sum_ij_AC  - P @ P.T - Gweights_d == np.zeros((dim_G, dim_G)))
 
-
-    opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
+    opts = {'ipopt.max_iter':50000, 'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
     opti.solver('ipopt', opts)
     sol = opti.solve()
     assert sol.stats()['success'], print(sol.stats())
@@ -197,10 +204,6 @@ def main():
     P_full_init = co_vars["P_full"]
     alpha_h_init = alpha_init * h_init
     beta_h_init = beta_init * h_init
-
-    def eval_ca_function(vars, eval_vars, func):
-        g_func = ca.Function('g_func', vars, [func])
-        return g_func(*eval_vars)
 
     vars = [b, d, h, alpha, beta, alpha_h, beta_h, P_full, lamb0]
     eval_vars = [b_init, d_init, h_init, alpha_init, beta_init, alpha_h_init, beta_h_init, P_full_init, lamb_init]

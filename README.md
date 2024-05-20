@@ -54,12 +54,12 @@ Feel free to experiment with various DIs to discover new algorithms suitable for
 ## Hello world
 See the `examples/hello_world.ipynb` notebook or explanation below.
 
-1. As a hello world example we consider the simplest problem given below, where $f$
-is nondifferentiable but strongly convex with $\mu=1/2$.
+1. As a hello world example we consider the problem given below, where $f$
+is convex function.
 
 $$
 \begin{array}{ll}
-\text{minimize}& f(x)
+\text{minimize}& f(x).
 \end{array}
 $$
 
@@ -80,7 +80,7 @@ import ciropt as co
 problem = co.CircuitOpt()
 ```
 
-**Step 2.** Define function classes for each $f_i$. In this example there is only single function with smoothness $M=\infty$ and strong convexity $\mu=1/2$.
+**Step 2.** Define function class, in this example $f$ is convex and nondifferentiable, i.e., $\mu=0$ and $M=\infty$.
 ```python3
 f = co.def_function(problem, mu, M)
 ```
@@ -90,31 +90,30 @@ f = co.def_function(problem, mu, M)
 x_star, y_star, f_star = f.stationary_point(return_gradient_and_function_value=True)
 ```
 
-**Step 4.** Define discretization parameters, for simplicity take $\alpha=0$ and $\beta=1$.
-```python3
-h, b, d = problem.h, problem.b, problem.d
-```
-
-**Step 5.** Define values for RLC and one step transition for discretized V-I relations
-of given DI.
+**Step 4.** Define values for the RLC components and
+discretization parameters, here for simplicity 
+we take $\alpha=0$ and $\beta=1$.
 ```python3
 R, C = 1, 10
+h, eta = problem.h, problem.eta
+```
 
+**Step 5.** Define the one step transition of the discretized V-I relations.
+```python3
 z_1 = problem.set_initial_point()
 e2_1 = problem.set_initial_point()
 x_1 = co.proximal_step(z_1, f, R/2)[0]
 y_1 = (2 / R) * (z_1 - x_1)
-
+e1_1 = (e2_1 - R * y_1) / 2
+v_C1_1 = e2_1 / 2 - z_1
+v_C2_1 = e2_1
 
 e2_2 = e2_1  -  h / (2 * R * C) *  (R * y_1 + 3 * e2_1)  
 z_2 = z_1  -  h / (4 * R * C) *  (5 * R * y_1 + 3 * e2_1)
 x_2 = co.proximal_step(z_2, f, R/2)[0]
 y_2 = (2 / R) * (z_2 - x_2)
-
-v_C1_1 = e2_1 / 2 - z_1
 v_C1_2 = e2_2 / 2 - z_2
-v_C2_1 = e2_1; v_C2_2 = e2_2 
-e1_1 = (e2_1 - R * y_1) / 2
+v_C2_2 = e2_2 
 ```
 
 **Step 6.** Define dissipative term and set the objective to maximize descent coefficients.
@@ -123,14 +122,10 @@ Solve the final problem.
 ```python
 E_1 = (C/2) * (v_C1_1 + x_star)**2 + (C/2) * (v_C2_1)**2
 E_2 = (C/2) * (v_C1_2 + x_star)**2 + (C/2) * (v_C2_2)**2
-Delta_1 = b * (x_1 - x_star) * (y_1 - y_star) \
-        + d * (1/R) * ((e1_1)**2 + (e1_1 - e2_1)**2 + (e2_1)**2)
-
+Delta_1 = eta * (x_1 - x_star) * (y_1 - y_star) 
 
 problem.set_performance_metric(E_2 - (E_1 - Delta_1))
-problem.obj = problem.b + problem.d * 1.01
-
-params = problem.solve(solver="ipopt")[:1]
+params = problem.solve()[:1]
 ``` 
 
 The resulting provably convergent algorithm is 
@@ -138,8 +133,8 @@ The resulting provably convergent algorithm is
 $$
 \begin{align*}
 x^k &= \mathbf{prox}_{(1/2) f}(z^k ),\quad  y^k=2(z^k-x^k)\\
-w^{k+1} &= w^k - 0.331(y^k + 3w^k) \\
-z^{k+1} &= z^k - 0.165(5 y^k + 3w^k).
+w^{k+1} &= w^k - 0.33(y^k + 3w^k) \\
+z^{k+1} &= z^k - 0.16(5 y^k + 3w^k).
 \end{align*}
 $$
 
@@ -192,4 +187,9 @@ Please consult our [manuscript](XXX) for the details of mentioned problems.
 Since we are using Ipopt which does not solve the nonconvex optimization problem to global optimality, here are some tips we found useful.
 1. Vary resistances, capacitances, inductances if the Ipopt does not find a proof for given values. 
 2. Try changing smoothness of your function class from $M=\infty$ to bounded value.
-3. Vary the mixing weight `w` in the objective `wb + d`.
+3. Consider the full dissipating term
+
+$$\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i_\mathcal{R}^1\|_{D_\mathcal{R}}^2.$$ 
+
+4. Vary the mixing weight $w$ in the objective $w\eta + \rho$, by setting `problem.obj=w*eta + rho`, which increases the descent in energy.
+5. Change solvers in the `problem.solve` from `"ipopt", "ipopt_qcqp", "ipopt_qcqp_matrix"`.

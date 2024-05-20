@@ -50,6 +50,7 @@ class CircuitOpt(object):
         """
         assert isinstance(perf_metric, Expression)
         self.perf_metric = perf_metric
+        self.obj = self.b
         assert check_degree_expression(self.perf_metric, 2)
 
 
@@ -159,7 +160,7 @@ class CircuitOpt(object):
         return sp_exp, total_I_size, total_eq_size, sum_ij_La, sum_ij_AC
         
     
-    def solve_ipopt(self, verbose=True, debug=False, init_vals=None, bounds=None, **kwargs):
+    def solve_ipopt(self, verbose=False, debug=False, init_vals=None, bounds=None, **kwargs):
         """
         Use Ipopt to find proofs: 
             solve the nonconvex problem by directly dualizing the Grammian formulation, 
@@ -183,8 +184,6 @@ class CircuitOpt(object):
         ca_add_bounds(opti, bounds, ca_vars, set())
         opti.subject_to( ca_vars["b"] >= 0 ); opti.subject_to( ca_vars["d"] >= 0 )
         opti.subject_to( ca_vars["h"] >= 0 )
-        # opti.subject_to( ca_vars["alpha"] >= -100 ); opti.subject_to( ca_vars["alpha"] <= 100 )
-        # opti.subject_to( ca_vars["beta"] >= -100 ); opti.subject_to( ca_vars["beta"] <= 100 )
 
         list_of_leaf_functions = [function for function in Function.list_of_functions
                                   if function.get_is_leaf()]
@@ -210,7 +209,7 @@ class CircuitOpt(object):
             opti.subject_to( ca.reshape(lamb, (-1, 1)) >= np.zeros((size_I_function * size_I_function, 1)) )
         
         sp_z1 = simplify_matrix(sum_ij_La - sp_exp["FG_d"]["F"])
-        sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) # sum_ij_AC - P @ P.T - Gweights_d
+        sp_z2 = simplify_matrix(sum_ij_AC - sp_exp["FG_d"]["G"]) 
         z1 = sympy_matrix_to_casadi(sp_z1, ca_vars, opti)
         z2 = sympy_matrix_to_casadi(sp_z2, ca_vars, opti)
         opti.subject_to( z1 == np.zeros((dim_F, 1))) 
@@ -233,8 +232,7 @@ class CircuitOpt(object):
         try:
             sol = opti.solve() # QCQP for solving CircuitOpt
         except:
-            if debug:
-                self.ca_vars = ca_vars
+            if debug: self.ca_vars = ca_vars
             print("Could not find a solution using Ipopt")
             return None, ca_vars, None, sp_exp
         assert sol.stats()['success'], print(sol.stats())
@@ -251,7 +249,7 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
   
-    def solve_ipopt_qcqp(self, verbose=True, init_values=None, x0=None, bounds=None, extra_dim=150, debug=False, **kwargs):
+    def solve_ipopt_qcqp(self, verbose=False, init_values=None, x0=None, bounds=None, extra_dim=150, debug=False, **kwargs):
         """
         Use Ipopt to find proofs and formulate problem explicitly as QCQP: 
             introduce the dummy variables for the discretization parameters
@@ -312,12 +310,13 @@ class CircuitOpt(object):
         # matrix coefficient for variable G is 0
         obj_G = np.concatenate([v_coeffs["G"][-1], np.zeros((dim_G*dim_G, v_size - v_coeffs["G"][-1].shape[1]))], axis=1)
         sum_ij_G = stack_vectors(v_coeffs["G"][:-1], v_size)
-        assert sum_ij_G.shape == (vec_lambs_nus.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (vec_lambs_nus.shape[0], dim_G*dim_G, v_size))
+        assert sum_ij_G.shape == (vec_lambs_nus.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, 
+                                                                                      (vec_lambs_nus.shape[0], dim_G*dim_G, v_size))
         for k1 in range(dim_G):
             for k2 in range(dim_G):
                 k_idx = k1 * dim_G + k2
                 P_k1P_k2 = get_PPt_element(vec_P, k1, k2)
-                opti.subject_to(  obj_G[k_idx : k_idx+1, :] @ vec_v + P_k1P_k2 - vec_lambs_nus.T @ sum_ij_G[:, k_idx, :] @ vec_v == 0)
+                opti.subject_to(obj_G[k_idx : k_idx+1, :] @ vec_v + P_k1P_k2 - vec_lambs_nus.T @ sum_ij_G[:, k_idx, :] @ vec_v == 0)
 
         # v variables quadratic constraints
         # v^T Qi v + ai^T v = 0 
@@ -340,7 +339,7 @@ class CircuitOpt(object):
         # P_diag_constraints = [Q]
         opti.subject_to( Q @ vec_P >= np.zeros((dim_G, 1)) )
 
-        opts = {'ipopt.max_iter':50000,} #"ipopt.tol": 1e-4, "ipopt.constr_viol_tol": 1e-4, "ipopt.dual_inf_tol": 1e-2} 
+        opts = {'ipopt.max_iter':50000,} 
         if not verbose:
             opts.update({'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'})
         ca_vars = {name : var_x[idx] for name, idx in name2idx.items()}
@@ -363,7 +362,7 @@ class CircuitOpt(object):
         return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
     
 
-    def solve_ipopt_qcqp_matrix(self, verbose=True, init_values=None, bounds=None, debug=False, **kwargs):
+    def solve_ipopt_qcqp_matrix(self, verbose=False, init_values=None, bounds=None, debug=False, **kwargs):
         """
         Use Ipopt to find proofs and formulate problem explicitly as QCQP using matrix X:
             with variables x = [vec(v), vec(lamb), vec(nu), vec(P)], and X = xx^T 
@@ -419,8 +418,7 @@ class CircuitOpt(object):
         assert sum_ij_G.shape == (I_lambs_nus.shape[0], dim_G*dim_G, v_size), print(sum_ij_G.shape, (I_lambs_nus.shape[0], dim_G*dim_G, v_size))
         for k1 in range(dim_G):
             for k2 in range(dim_G):
-                k_idx = k1 * dim_G + k2
-                # PP^T_{k1, k2} = P_{k1,:}(P_{k2,:})^T = (S1 @ x).T @ (S2 @ x) = S1.T @ S2 @ xx^T
+                k_idx = k1 * dim_G + k2 
                 S1, S2 = get_PPt_matrix(var_x, vec_indices, k1, k2)
                 opti.subject_to(  obj_G[k_idx : k_idx+1, :] @ I_v @ var_x \
                                 + ca.trace(S1.T @ S2 @ var_X)\
@@ -432,7 +430,6 @@ class CircuitOpt(object):
             vars = name.split("_")
             if len(vars) == 1: continue
             pref_v, v = "_".join(vars[:-1]), vars[-1]
-            # print(f"{name=}, {pref_v=}, {v=}")
             ai = - one_hot(v_size, name2idx[name])
             # include both permutations for the product 
             Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
@@ -476,6 +473,7 @@ class CircuitOpt(object):
     solve_sdp_relax = solve_sdp_relax
     solve_fix_discr_sdp = solve_fix_discr_sdp
     solve_bisection_b = solve_bisection_b
+
 
     def solve(self, solver="ipopt", **kwargs):
         if solver == "ipopt":
