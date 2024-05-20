@@ -44,7 +44,7 @@ $$
 
 4. Using `ciropt` find discretization parameters for DI that produce convergent algorithm.
 
-5. Use the resulting algorithm to solve the original problem. 
+5. Use the resulting algorithm to solve your problem. 
 
 Note that in step 3, there are infinitely many admissible DIs that can be designed. 
 Each of these, when discretized, results in a different optimization algorithm. 
@@ -191,5 +191,5 @@ Since we are using Ipopt which does not solve the nonconvex optimization problem
 
 $$\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i_\mathcal{R}^1\|_{D_\mathcal{R}}^2.$$ 
 
-4. Vary the mixing weight $w$ in the objective $w\eta + \rho$, by setting `problem.obj = eta + w*rho`, which increases the descent in energy.
+4. Vary the mixing weight $w$ in the objective $\eta + w\rho$, by setting `problem.obj = eta + w*rho`, which increases the descent in energy.
 5. Change solvers in the `problem.solve` from `"ipopt", "ipopt_qcqp", "ipopt_qcqp_matrix"`.
