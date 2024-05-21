@@ -216,6 +216,19 @@ def matrix_to_diff_psd(A):
     return A_plus, A_minus
 
 
+def grid_search(optimization_func, param_values):
+    best_value = np.inf
+    for param in param_values:
+        reldiff = optimization_func(param)
+        new_val = sum(reldiff[50:350])/300
+        if new_val < best_value:
+            print(f"new {param=}, new {new_val=}")
+            best_value = new_val
+            best_param = param
+    print(f"{best_param = }")
+    return best_param
+
+
 def define_function(problem, mu, L_smooth, package):
     if mu != 0 and L_smooth < np.inf:
         func = problem.declare_function(package.SmoothStronglyConvexFunction, L=L_smooth, mu=mu) 

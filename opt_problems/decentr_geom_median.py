@@ -56,7 +56,7 @@ def cvx_prox_fj_geom_mean_sc(z, rho, b, c, vector_size, theta=1e-4):
 
 
 def cvx_geom_median(problem_spec, problem_data):
-    n_node = problem_spec['n_node']
+    n_nodes = problem_spec['n_nodes']
     vector_size = problem_spec['vector_size']
     theta = problem_spec['sc_theta']
     b = problem_data['b']
@@ -65,7 +65,7 @@ def cvx_geom_median(problem_spec, problem_data):
     x = cp.Variable(vector_size)
     f = 0
 
-    for jj in range(n_node) :
+    for jj in range(n_nodes) :
         b_temp = b[jj*vector_size : (jj+1)*vector_size]
         c_temp = c[jj*vector_size : (jj+1)*vector_size]
         f += cp.norm(x - b_temp, 2)  
@@ -75,25 +75,25 @@ def cvx_geom_median(problem_spec, problem_data):
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
     assert prob.status=="optimal"
-    x_cvx = np.repeat(x.value, n_node).reshape(vector_size, n_node).T
+    x_cvx = np.repeat(x.value, n_nodes).reshape(vector_size, n_nodes).T
     return f.value, x_cvx
 
 
 def data_generation(problem_spec) :
-    n_node = problem_spec['n_node']
+    n_nodes = problem_spec['n_nodes']
     vector_size = problem_spec['vector_size']
     translation = problem_spec['translation']
 
     # vectors which geom. median we want to find
-    # b = np.random.randn(n_node * vector_size)
-    b = np.random.rand(n_node * vector_size) * 200 - 100
+    # b = np.random.randn(n_nodes * vector_size)
+    b = np.random.rand(n_nodes * vector_size) * 200 - 100
     
     if translation=="b":
         c = b
     elif translation=="rand":
-        c = np.random.rand(n_node * vector_size) * 200 - 100
+        c = np.random.rand(n_nodes * vector_size) * 200 - 100
     else:
-        c = np.zeros(n_node * vector_size)
+        c = np.zeros(n_nodes * vector_size)
 
     problem_data = {'b' : b, 'c' : c}
     return problem_data
@@ -104,31 +104,31 @@ def graph_generation_nodes6():
     # 1 -- 2 -- 4 -- 5
     #   \  |  /  \
     #      3       6 
-    n_node = 6
+    n_nodes = 6
 
     # (1) network
     G = nx.Graph()
-    G.add_nodes_from([1, n_node])
+    G.add_nodes_from([1, n_nodes])
     G.add_edges_from([(1,2), (1,3), (2,3), (2,4), (3,4), (4,5), (4,6)])
 
     # (2) mixing matrices : metropolis-hastings weights
-    W = np.zeros((n_node, n_node))
+    W = np.zeros((n_nodes, n_nodes))
     for edge in list(G.edges) :
         (i,j) = edge
         W[i-1,j-1] = 1/(np.maximum(G.degree(i), G.degree(j))+1)
         W[j-1,i-1] = 1/(np.maximum(G.degree(j), G.degree(i))+1)
-    for i in range(n_node) :
+    for i in range(n_nodes) :
         W[i,i] = 1 - np.sum(W[i])
     [_, S, V] = np.linalg.svd((1/2)*(np.eye(W.shape[0])-W))
-    Vred = V[0:n_node-1]
-    Sred = S[0:n_node-1]
+    Vred = V[0:n_nodes-1]
+    Sred = S[0:n_nodes-1]
 
     network_data = {'G' : G, 'W' : W, 'Vred' : Vred, 'Sred' : Sred}
     return network_data
 
 
 def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x_opt_star, f_star, printing=False, freq=200, params=None) :
-    n_node = problem_spec['n_node']
+    n_nodes = problem_spec['n_nodes']
     vector_size = problem_spec['vector_size']
     rho = problem_data['rho']
     theta = problem_spec['sc_theta']
@@ -140,9 +140,9 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     
     err_opt_star, err_opt_reldiff, const_vio, f_reldiff = [], [], [], []
 
-    x_0 = np.reshape(b, (n_node, vector_size))
+    x_0 = np.reshape(b, (n_nodes, vector_size))
     x_k = np.array(x_0)
-    w_0 = np.zeros((n_node,vector_size))
+    w_0 = np.zeros((n_nodes,vector_size))
     w_k = np.array(w_0)
 
     e_k = np.array(x_0)
@@ -151,7 +151,7 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
         x_k_prev = np.array(x_k)
         w_k_prev = np.array(w_k)
         f_val = 0
-        for jj in range(n_node) :
+        for jj in range(n_nodes) :
             b_temp = b[jj*vector_size : (jj+1)*vector_size]
             c_temp = c[jj*vector_size : (jj+1)*vector_size]
             z_temp = (W[jj]@x_k_prev - w_k_prev[jj])
@@ -163,7 +163,7 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
                 x_k[jj] = prox_fj_geom_mean(z_temp, rho, b_temp)
                 f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2)
 
-        w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
+        w_k = w_k_prev + 1/2*(np.eye(n_nodes) - W) @ x_k_prev
               
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
