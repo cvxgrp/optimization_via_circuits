@@ -156,7 +156,7 @@ and solve the dual problem
 
 $$
 \begin{array}{ll}
-\text{maximize} & g(y) = -f^*(-A^T y ) - b^Ty.
+\text{maximize} & g(y) = -f^*(-A^\intercal y ) - b^Ty.
 \end{array}
 $$
 
@@ -187,9 +187,11 @@ Please consult our [manuscript](XXX) for the details of mentioned problems.
 Since we are using Ipopt which does not solve the nonconvex optimization problem to global optimality, here are some tips we found useful.
 1. Vary resistances, capacitances, inductances if the Ipopt does not find a proof for given values. 
 2. Try changing smoothness of your function class from $M=\infty$ to bounded value.
-3. Consider the full dissipating term
+3. Consider the full dissipative term
 
-$$\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i_\mathcal{R}^1\|_{D_\mathcal{R}}^2.$$ 
+$$
+\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i_\mathcal{R}^1\|_{D_\mathcal{R}}^2.
+$$
 
 4. Vary the mixing weight $w$ in the objective $\eta + w\rho$, by setting `problem.obj = eta + w*rho`, which increases the descent in energy.
 5. Change solvers in the `problem.solve` from `"ipopt", "ipopt_qcqp", "ipopt_qcqp_matrix"`.
