@@ -12,6 +12,174 @@ from ciropt.utils import define_function
 
 
 
+def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
+    # agent communication graph 1 -- 2 -- 3
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step 
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
+
+    f1 = define_function(problem, mu, L_smooth_f, package)
+    f2 = define_function(problem, mu, L_smooth_f, package)
+    f3 = define_function(problem, mu, L_smooth_f, package)
+    h1 = define_function(problem, mu, L_smooth_h, package)
+    h2 = define_function(problem, mu, L_smooth_h, package)
+    h3 = define_function(problem, mu, L_smooth_h, package)
+
+    x_star, y_star, f_star = (f1 + f2 + f3 + h1 + h2 + h3).stationary_point(return_gradient_and_function_value=True)
+    y_f1_star, f1_star = f1.oracle(x_star)
+    y_f2_star, f2_star = f2.oracle(x_star)
+    y_f3_star, f3_star = f3.oracle(x_star)
+    y_h1_star, h1_star = h1.oracle(x_star)
+    y_h2_star, h2_star = h2.oracle(x_star)
+    y_h3_star, h3_star = h3.oracle(x_star)
+
+    i_L_12_star = - y_f1_star - y_h1_star
+    i_L_23_star = y_f3_star + y_h3_star
+
+    problem.add_constraint(Constraint((y_f1_star + y_f2_star + y_f3_star + y_h1_star + y_h2_star + y_h3_star - y_star) ** 2, "equality"))
+
+    x1_1 = problem.set_initial_point()
+    x2_1 = problem.set_initial_point()
+    x3_1 = problem.set_initial_point()
+    y_f1_1, f1_1 = f1.oracle(x1_1)
+    y_f2_1, f2_1 = f2.oracle(x2_1)
+    y_f3_1, f3_1 = f3.oracle(x3_1)
+    y_h1_1, h1_1 = h1.oracle(x1_1)
+    y_h2_1, h2_1 = h2.oracle(x2_1)    
+    y_h3_1, h3_1 = h3.oracle(x3_1)    
+
+    i_L_12_1 =  problem.set_initial_point() 
+    i_L_23_1 =  problem.set_initial_point() 
+
+    # update
+    e1_1 = W[0][0] * x1_1 + W[0][1] * x2_1 + W[0][2] * x3_1 - R * y_h1_1 - R * i_L_12_1
+    e2_1 = W[1][0] * x1_1 + W[1][1] * x2_1 + W[1][2] * x3_1 - R * y_h2_1 + R * i_L_12_1 - R * i_L_23_1
+    e3_1 = W[2][0] * x1_1 + W[2][1] * x2_1 + W[2][2] * x3_1 - R * y_h3_1 + R * i_L_23_1
+    x1_2, y_f1_2, f1_2 = proximal_step(e1_1, f1, R)
+    x2_2, y_f2_2, f2_2 = proximal_step(e2_1, f2, R)
+    x3_2, y_f3_2, f3_2 = proximal_step(e3_1, f3, R)
+
+    R_12, R_23 = R / W[0][1], R / W[1][2]
+    L_12, L_23 = R_12, R_23
+
+    i_L_12_2 = i_L_12_1 + h/R_12 * (x1_1 - x2_1)
+    i_L_23_2 = i_L_23_1 + h/R_23 * (x2_1 - x3_1)    
+    
+    i_L_12_3 = i_L_12_2 + h/R_12 * (x1_2 - x2_2)
+    i_L_23_3 = i_L_23_2 + h/R_23 * (x2_2 - x3_2)    
+
+    # Energy
+    E_1 = gamma * ( (x1_1 - x_star)**2 + (x2_1 - x_star)**2 + (x3_1 - x_star)**2 ) \
+        + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2  + (L_23/2) * (i_L_23_2 - i_L_23_star) ** 2  
+    E_2 = gamma * ( (x1_2 - x_star)**2  + (x2_2 - x_star)**2 + (x3_2 - x_star)**2 ) \
+        + (L_12/2) * (i_L_12_3 - i_L_12_star) ** 2  + (L_23/2) * (i_L_23_3 - i_L_23_star) ** 2  
+ 
+    # Delta
+    Delta_2 = eta * ( (y_f1_2 - y_f1_star) * (x1_2 - x_star) \
+                + (y_f2_2 - y_f2_star) * (x2_2 - x_star) \
+                + (y_f3_2 - y_f3_star) * (x3_2 - x_star) ) \
+            + rho *( (y_h1_1 - y_h1_star) * (x1_1 - x_star)  \
+                + (y_h2_1 - y_h2_star) * (x2_1 - x_star) \
+                + (y_h3_1 - y_h3_star) * (x3_1 - x_star) )
+
+    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
+    return problem
+
+
+def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
+    # agent communication graph 1 -- 2 -- 3
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        # h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
+        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step 
+        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    f3 = define_function(problem, mu, L_smooth, package)
+
+    x_star, y_star, f_star = (f1 + f2 + f3).stationary_point(return_gradient_and_function_value=True)
+    y1_star, f1_star = f1.oracle(x_star)
+    y2_star, f2_star = f2.oracle(x_star)
+    y3_star, f3_star = f3.oracle(x_star)
+
+    y2_21_star = problem.set_initial_point()
+    y2_23_star = y2_star - y2_21_star
+    # when f is not differentiable
+    problem.add_constraint(Constraint((y1_star + y2_star + y3_star - y_star) ** 2, "equality"))
+    # currents on each new at equilibrium sum to 0
+    problem.add_constraint(Constraint((y2_21_star + y1_star) ** 2, "equality"))
+    problem.add_constraint(Constraint((y2_23_star + y3_star) ** 2, "equality"))
+
+    e_12_1 = problem.set_initial_point()
+    e_23_1 = problem.set_initial_point()
+    # initialize currents on inductors to sum to 0 on every edge
+    i_L_12n1_1 = problem.set_initial_point()
+    i_L_23n2_1 = problem.set_initial_point()
+
+    x1_1p5, y1_1p5, f1_1p5 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
+    x2_1p5, y2_1p5, f2_1p5 = proximal_step(((-R * i_L_12n1_1 + e_12_1) + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
+    x3_1p5, y3_1p5, f3_1p5 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
+
+    e_12_1p5 = (x1_1p5 + x2_1p5) / 2
+    e_23_1p5 = (x2_1p5 + x3_1p5) / 2
+    i_L_12n1_1p5 = i_L_12n1_1 + ( alpha * h / Inductance) * (e_12_1p5 - x1_1p5)
+    i_L_23n2_1p5 = i_L_23n2_1 + ( alpha * h / Inductance) * (e_23_1p5 - x2_1p5)
+
+    x1_2, y1_2, f1_2 = proximal_step((R * i_L_12n1_1p5 + e_12_1p5), f1, R)
+    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1p5 + e_12_1p5) + (R * i_L_23n2_1p5 + e_23_1p5))/2, f2, R/2)
+    x3_2, y3_2, f3_2 = proximal_step((-R * i_L_23n2_1p5 + e_23_1p5), f3, R)
+
+    e_12_2 = (x1_2 + x2_2) / 2
+    e_23_2 = (x2_2 + x3_2) / 2
+    i_L_12n1_2 = i_L_12n1_1 + ( beta * h / Inductance) * (e_12_1p5 - x1_1p5) \
+                            + ( (1-beta) * h / Inductance) * (e_12_2 - x1_2)      
+    i_L_23n2_2 = i_L_23n2_1 + ( beta * h / Inductance) * (e_23_1p5 - x2_1p5) \
+                            + ( (1-beta) * h / Inductance) * (e_23_2 - x2_2)
+    
+    # y1_12_star = y1_star; y3_32_star = y3_star
+    E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
+            + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
+            + (Inductance/2) * (-i_L_12n1_1 - y2_21_star) ** 2 \
+            + (Inductance/2) * (i_L_23n2_1 - y2_23_star) ** 2 \
+            + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
+    E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
+        + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
+        + (Inductance/2) * (-i_L_12n1_2 - y2_21_star) ** 2 \
+        + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
+        + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2  
+    
+    Delta_2 = rho * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
+                         + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
+              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star)\
+                    + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
+                    + f3_2 - f3_star - y3_star * (x3_2 - x_star))
+
+    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
+    return problem
+
+
 def decentralized_admm_cycle4(mu, L_smooth, R, Inductance, params=None):
     # cycle graph with 4 nodes and 4 edges (1,2), (2,3), (3,4), (4, 1)
     # 1 -- 2 -- 3 
@@ -209,174 +377,6 @@ def decentralized_admm_graph6(mu, L_smooth, R, Inductance, params=None):
                     + f4_2 - f4_star - y4_star * (x4_2 - x_star) \
                     + f5_2 - f5_star - y5_star * (x5_2 - x_star) \
                     + f6_2 - f6_star - y6_star * (x6_2 - x_star))
-
-    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
-    return problem
-
-
-def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
-    # agent communication graph 1 -- 2 -- 3
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP()
-        package = pep_func 
-        Constraint = pep_constr
-        proximal_step = pep_proximal_step
-        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        Constraint = co_constr
-        proximal_step = co_func.proximal_step 
-        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
-
-    f1 = define_function(problem, mu, L_smooth_f, package)
-    f2 = define_function(problem, mu, L_smooth_f, package)
-    f3 = define_function(problem, mu, L_smooth_f, package)
-    h1 = define_function(problem, mu, L_smooth_h, package)
-    h2 = define_function(problem, mu, L_smooth_h, package)
-    h3 = define_function(problem, mu, L_smooth_h, package)
-
-    x_star, y_star, f_star = (f1 + f2 + f3 + h1 + h2 + h3).stationary_point(return_gradient_and_function_value=True)
-    y_f1_star, f1_star = f1.oracle(x_star)
-    y_f2_star, f2_star = f2.oracle(x_star)
-    y_f3_star, f3_star = f3.oracle(x_star)
-    y_h1_star, h1_star = h1.oracle(x_star)
-    y_h2_star, h2_star = h2.oracle(x_star)
-    y_h3_star, h3_star = h3.oracle(x_star)
-
-    i_L_12_star = - y_f1_star - y_h1_star
-    i_L_23_star = y_f3_star + y_h3_star
-
-    problem.add_constraint(Constraint((y_f1_star + y_f2_star + y_f3_star + y_h1_star + y_h2_star + y_h3_star - y_star) ** 2, "equality"))
-
-    x1_1 = problem.set_initial_point()
-    x2_1 = problem.set_initial_point()
-    x3_1 = problem.set_initial_point()
-    y_f1_1, f1_1 = f1.oracle(x1_1)
-    y_f2_1, f2_1 = f2.oracle(x2_1)
-    y_f3_1, f3_1 = f3.oracle(x3_1)
-    y_h1_1, h1_1 = h1.oracle(x1_1)
-    y_h2_1, h2_1 = h2.oracle(x2_1)    
-    y_h3_1, h3_1 = h3.oracle(x3_1)    
-
-    i_L_12_1 =  problem.set_initial_point() 
-    i_L_23_1 =  problem.set_initial_point() 
-
-    # update
-    e1_1 = W[0][0] * x1_1 + W[0][1] * x2_1 + W[0][2] * x3_1 - R * y_h1_1 - R * i_L_12_1
-    e2_1 = W[1][0] * x1_1 + W[1][1] * x2_1 + W[1][2] * x3_1 - R * y_h2_1 + R * i_L_12_1 - R * i_L_23_1
-    e3_1 = W[2][0] * x1_1 + W[2][1] * x2_1 + W[2][2] * x3_1 - R * y_h3_1 + R * i_L_23_1
-    x1_2, y_f1_2, f1_2 = proximal_step(e1_1, f1, R)
-    x2_2, y_f2_2, f2_2 = proximal_step(e2_1, f2, R)
-    x3_2, y_f3_2, f3_2 = proximal_step(e3_1, f3, R)
-
-    R_12, R_23 = R / W[0][1], R / W[1][2]
-    L_12, L_23 = R_12, R_23
-
-    i_L_12_2 = i_L_12_1 + h/R_12 * (x1_1 - x2_1)
-    i_L_23_2 = i_L_23_1 + h/R_23 * (x2_1 - x3_1)    
-    
-    i_L_12_3 = i_L_12_2 + h/R_12 * (x1_2 - x2_2)
-    i_L_23_3 = i_L_23_2 + h/R_23 * (x2_2 - x3_2)    
-
-    # Energy
-    E_1 = gamma * ( (x1_1 - x_star)**2 + (x2_1 - x_star)**2 + (x3_1 - x_star)**2 ) \
-        + (L_12/2) * (i_L_12_2 - i_L_12_star) ** 2  + (L_23/2) * (i_L_23_2 - i_L_23_star) ** 2  
-    E_2 = gamma * ( (x1_2 - x_star)**2  + (x2_2 - x_star)**2 + (x3_2 - x_star)**2 ) \
-        + (L_12/2) * (i_L_12_3 - i_L_12_star) ** 2  + (L_23/2) * (i_L_23_3 - i_L_23_star) ** 2  
- 
-    # Delta
-    Delta_2 = eta * ( (y_f1_2 - y_f1_star) * (x1_2 - x_star) \
-                + (y_f2_2 - y_f2_star) * (x2_2 - x_star) \
-                + (y_f3_2 - y_f3_star) * (x3_2 - x_star) ) \
-            + rho *( (y_h1_1 - y_h1_star) * (x1_1 - x_star)  \
-                + (y_h2_1 - y_h2_star) * (x2_1 - x_star) \
-                + (y_h3_1 - y_h3_star) * (x3_1 - x_star) )
-
-    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
-    return problem
-
-
-def decentralized_admm_consensus_l3(mu, L_smooth, R, Inductance, params=None):
-    # agent communication graph 1 -- 2 -- 3
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP()
-        package = pep_func 
-        Constraint = pep_constr
-        proximal_step = pep_proximal_step
-        # h, eta, rho, gamma = params["h"], params["eta"], params["rho"], params["gamma"]
-        h, alpha, beta, eta, rho, gamma = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"], params["gamma"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        Constraint = co_constr
-        proximal_step = co_func.proximal_step 
-        h, alpha, beta, eta, rho, gamma = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho, problem.gamma
-
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    f3 = define_function(problem, mu, L_smooth, package)
-
-    x_star, y_star, f_star = (f1 + f2 + f3).stationary_point(return_gradient_and_function_value=True)
-    y1_star, f1_star = f1.oracle(x_star)
-    y2_star, f2_star = f2.oracle(x_star)
-    y3_star, f3_star = f3.oracle(x_star)
-
-    y2_21_star = problem.set_initial_point()
-    y2_23_star = y2_star - y2_21_star
-    # when f is not differentiable
-    problem.add_constraint(Constraint((y1_star + y2_star + y3_star - y_star) ** 2, "equality"))
-    # currents on each new at equilibrium sum to 0
-    problem.add_constraint(Constraint((y2_21_star + y1_star) ** 2, "equality"))
-    problem.add_constraint(Constraint((y2_23_star + y3_star) ** 2, "equality"))
-
-    e_12_1 = problem.set_initial_point()
-    e_23_1 = problem.set_initial_point()
-    # initialize currents on inductors to sum to 0 on every edge
-    i_L_12n1_1 = problem.set_initial_point()
-    i_L_23n2_1 = problem.set_initial_point()
-
-    x1_1p5, y1_1p5, f1_1p5 = proximal_step((R * i_L_12n1_1 + e_12_1), f1, R)
-    x2_1p5, y2_1p5, f2_1p5 = proximal_step(((-R * i_L_12n1_1 + e_12_1) + (R * i_L_23n2_1 + e_23_1))/2, f2, R/2)
-    x3_1p5, y3_1p5, f3_1p5 = proximal_step((-R * i_L_23n2_1 + e_23_1), f3, R)
-
-    e_12_1p5 = (x1_1p5 + x2_1p5) / 2
-    e_23_1p5 = (x2_1p5 + x3_1p5) / 2
-    i_L_12n1_1p5 = i_L_12n1_1 + ( alpha * h / Inductance) * (e_12_1p5 - x1_1p5)
-    i_L_23n2_1p5 = i_L_23n2_1 + ( alpha * h / Inductance) * (e_23_1p5 - x2_1p5)
-
-    x1_2, y1_2, f1_2 = proximal_step((R * i_L_12n1_1p5 + e_12_1p5), f1, R)
-    x2_2, y2_2, f2_2 = proximal_step(((-R * i_L_12n1_1p5 + e_12_1p5) + (R * i_L_23n2_1p5 + e_23_1p5))/2, f2, R/2)
-    x3_2, y3_2, f3_2 = proximal_step((-R * i_L_23n2_1p5 + e_23_1p5), f3, R)
-
-    e_12_2 = (x1_2 + x2_2) / 2
-    e_23_2 = (x2_2 + x3_2) / 2
-    i_L_12n1_2 = i_L_12n1_1 + ( beta * h / Inductance) * (e_12_1p5 - x1_1p5) \
-                            + ( (1-beta) * h / Inductance) * (e_12_2 - x1_2)      
-    i_L_23n2_2 = i_L_23n2_1 + ( beta * h / Inductance) * (e_23_1p5 - x2_1p5) \
-                            + ( (1-beta) * h / Inductance) * (e_23_2 - x2_2)
-    
-    # y1_12_star = y1_star; y3_32_star = y3_star
-    E_1 = gamma * (e_12_1 - x_star)**2 + gamma * (e_23_1 - x_star)**2 \
-            + (Inductance/2) * (i_L_12n1_1 - y1_star) ** 2 \
-            + (Inductance/2) * (-i_L_12n1_1 - y2_21_star) ** 2 \
-            + (Inductance/2) * (i_L_23n2_1 - y2_23_star) ** 2 \
-            + (Inductance/2) * (-i_L_23n2_1 - y3_star) ** 2 
-    E_2 = gamma * (e_12_2 - x_star)**2 + gamma * (e_23_2 - x_star)**2 \
-        + (Inductance/2) * (i_L_12n1_2 - y1_star) ** 2 \
-        + (Inductance/2) * (-i_L_12n1_2 - y2_21_star) ** 2 \
-        + (Inductance/2) * (i_L_23n2_2 - y2_23_star) ** 2 \
-        + (Inductance/2) * (-i_L_23n2_2 - y3_star) ** 2  
-    
-    Delta_2 = rho * (1/R) * ((e_12_2 - x1_2)**2 + (e_12_2 - x2_2)**2 \
-                         + (e_23_2 - x2_2)**2 + (e_23_2 - x3_2)**2 ) \
-              + eta * ( f1_2 - f1_star - y1_star * (x1_2 - x_star)\
-                    + f2_2 - f2_star - y2_star * (x2_2 - x_star) \
-                    + f3_2 - f3_star - y3_star * (x3_2 - x_star))
 
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem

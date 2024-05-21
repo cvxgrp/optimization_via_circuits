@@ -138,7 +138,7 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     itr_num = problem_data['itr_num']
     W = network_data['W']
     
-    err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
+    err_opt_star, err_opt_reldiff, const_vio, f_reldiff = [], [], [], []
 
     x_0 = np.reshape(b, (n_node, vector_size))
     x_k = np.array(x_0)
@@ -156,8 +156,7 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
             c_temp = c[jj*vector_size : (jj+1)*vector_size]
             z_temp = (W[jj]@x_k_prev - w_k_prev[jj])
             if jj in [3, 4]:
-                x_k[jj] = prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, theta=theta)
-                # x_k[jj] = cvx_prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, vector_size, theta=theta)
+                x_k[jj] = prox_fj_geom_mean_sc(z_temp, rho, b_temp, c_temp, theta=theta) 
                 f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2) + theta * np.linalg.norm(x_k[jj] - c_temp, ord=2)**2
             else:
                 e_k[jj] = b_temp - z_temp
@@ -165,39 +164,12 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
                 f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2)
 
         w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
-        
-        op_norm.append(Mnormsq(x_k-x_k_prev, w_k-w_k_prev, rho, network_data, n_node))        
-
+              
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
         err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
-        # const_vio.append(np.sum((A@x_k.T - b_stack)**2))
         f_reldiff.append(np.abs(f_star - f_val)/f_star)
         if printing and (ii % freq == 0 or ii == itr_num-1):
             print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
 
-    return op_norm, err_opt_star, err_opt_reldiff, const_vio, f_reldiff
+    return err_opt_star, err_opt_reldiff, const_vio, f_reldiff
 
-"""
-    Helper functions: calculates inner product and norm induced by metric matrix M (which is dependent on rho).
-
-    (1) Minner  : calculates M-inner product between (x_1, w_1) and (x_2, w_2)
-    (2) Mnormsq : calculates squared M-norm of (x, w)
-    (3) Mnorm   : calculates M-norm of (x, w)
-"""
-
-def Minner(x1, w1, x2, w2, rho, network_data, n_node) :
-    Vred = network_data['Vred']
-    Sred = network_data['Sred']
-
-    norm_squared = (1/rho)*np.sum(x1*x2) + (1/rho)*np.sum(x1*w2) + (1/rho)*np.sum(w1*x2)
-    u1 = (1/rho)*Vred.T@((Vred@w1)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
-    u2 = (1/rho)*Vred.T@((Vred@w2)*np.reshape(1/np.sqrt(Sred), (n_node-1,1)))
-    norm_squared = norm_squared + rho*np.sum(u1*u2)
-
-    return norm_squared
-
-def Mnormsq(x, w, rho, network_data, n_node) :
-    return 1/4*Minner(x, w, x, w, rho, network_data, n_node)
-
-def Mnorm(x, w, rho, network_data, n_node) :
-    return 1/2*np.sqrt(Minner(x, w, x, w, rho, network_data, n_node))

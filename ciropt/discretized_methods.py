@@ -84,4 +84,3 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
     return err_opt_star, err_opt_reldiff, const_vio, f_reldiff
 
 
-

@@ -24,7 +24,8 @@ Requirements
 * scipy >= 1.11.3
 * casadi >= 3.6.4
 * sympy >= 1.12
-
+* cvxpy >= 1.4.1
+* matplotlib >= 3.5.3
 
 # Process of optimization algorithm design
 
@@ -152,11 +153,12 @@ $$
 \end{array}
 $$
 
+where $A\in \mathbf{R}^{m \times n}$, $b\in \mathbf{R}^m$ and $c\in \mathbf{R}^n$,
 and solve the dual problem
 
 $$
 \begin{array}{ll}
-\text{maximize} & g(y) = -f^*(-A^\intercal y ) - b^Ty.
+\text{maximize} & g(y) = -f^*(-A^\intercal y ) - b^\intercal y.
 \end{array}
 $$
 
