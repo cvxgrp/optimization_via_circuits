@@ -1,8 +1,5 @@
 import sympy as sp
 import numpy as np
-# import gurobipy as gp
-import cvxpy as cp
-
 
 
 
