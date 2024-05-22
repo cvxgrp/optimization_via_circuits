@@ -188,7 +188,7 @@ Please consult our [manuscript](XXX) for the details of mentioned problems.
 ## Tips
 Since we are using Ipopt which does not solve the nonconvex optimization problem to global optimality, here are some tips we found useful.
 1. Vary resistances, capacitances, inductances if the Ipopt does not find a proof for given values. 
-2. Try changing smoothness of your function class from $M=\infty$ to bounded value.
+2. Try changing smoothness of your function class from $M=\infty$ to finite value.
 3. Consider the full dissipative term
 
 $$
