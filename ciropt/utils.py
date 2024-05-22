@@ -241,7 +241,7 @@ def define_function(problem, mu, L_smooth, package):
     return func
 
 
-def plot_methods(losses, labels, ymin, ymax, fname=""):
+def plot_methods(losses, labels, ymin, ymax, fname="", yscale='log', xscale=None):
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
     plt.rcParams["legend.fontsize"] = 10
@@ -255,7 +255,8 @@ def plot_methods(losses, labels, ymin, ymax, fname=""):
 
     plt.figure(figsize=(5,4))
     plt.minorticks_off()
-    plt.xscale("log")
+    if xscale is not None:
+        plt.xscale(xscale)
     plt.yscale("log")
     i = 0
     for loss, label in zip(losses, labels):
@@ -264,7 +265,7 @@ def plot_methods(losses, labels, ymin, ymax, fname=""):
         else:
             plt.plot(loss, label=label,  color=colors[i], linewidth=1) 
             i += 1
-    plt.xlabel(r"$k$")
+    plt.xlabel(r"Iteration count $k$")
     plt.ylabel(r"$|f(x^k) - f^\star|/f^\star$")
 
     plt.ylim(ymin, ymax) 

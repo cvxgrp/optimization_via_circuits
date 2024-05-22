@@ -11,6 +11,125 @@ from ciropt.utils import define_function
 
 
 
+def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=None):
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    f3 = define_function(problem, mu, L_smooth, package)
+    
+    # stepsize = h / Capacitance
+    x2_star = problem.set_initial_point()
+    y2_star, f2_star = f2.oracle(x2_star)
+    x1_star, y1_star, f1_star = proximal_step(x2_star, f1, R)
+    x3_star, y3_star, f3_star = proximal_step(x2_star, f3, R)
+    x2_star_v2, y2_star_v2, f2_star_v2 = proximal_step((x1_star + x3_star)/2, f2, R/2)
+    problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2, "equality"))
+
+    x1_1 = problem.set_initial_point()
+    y1_1, _ = f1.oracle(x1_1) 
+    x2_1 = problem.set_initial_point()
+    y2_1, _ = f2.oracle(x2_1)
+    x3_1 = problem.set_initial_point()
+    y3_1, _ = f3.oracle(x3_1)
+
+    x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (x1_1 - x2_1) / R ) 
+    y1_2, f1_2 = f1.oracle(x1_2)
+    x2_2 = x2_1 - ( h / Capacitance) * (y2_1 + (x2_1 - x1_1 + x2_1 - x3_1) / R ) 
+    y2_2, f2_2 = f2.oracle(x2_2)
+    x3_2 = x3_1 - ( h / Capacitance) * (y3_1 + (x3_1 - x2_1) / R )
+    y3_2, f3_2 = f3.oracle(x3_2)
+
+    E_1 = (Capacitance/2) * ((x1_1 - x1_star)**2 + (x2_1 - x2_star)**2 + (x3_1 - x3_star)**2)
+    E_2 = (Capacitance/2) * ((x1_2 - x1_star)**2 + (x2_2 - x2_star)**2 + (x3_2 - x3_star)**2) 
+
+    Delta_2 = rho * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
+              eta * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) 
+                                                        + (x3_2 - x3_star) * (y3_2 - y3_star))
+    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
+    return problem
+
+
+def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
+    """
+    Mixing matrix for a line graph 
+    W = [[1/3, 2/3, 0], 
+         [1/3, 1/3, 1/3],
+         [0, 1/3, 2/3]]
+    """
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP() 
+        package = pep_func 
+        Constraint = pep_constr
+        proximal_step = pep_proximal_step
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        Constraint = co_constr
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
+
+    f1 = define_function(problem, mu, L_smooth, package)
+    f2 = define_function(problem, mu, L_smooth, package)
+    f3 = define_function(problem, mu, L_smooth, package)
+    
+    x1_star = problem.set_initial_point()
+    x2_star = problem.set_initial_point()
+    x3_star = problem.set_initial_point()
+    y1_star, f1_star = f1.oracle(x1_star)
+    y2_star, f2_star = f2.oracle(x2_star)
+    y3_star, f3_star = f3.oracle(x3_star)
+    e1_star = x1_star - R * y1_star
+    e2_star = x2_star - R * y2_star
+    e3_star = x3_star - R * y3_star
+    problem.add_constraint(Constraint( ((e1_star - 2 * e2_star + e3_star) / (3 * R) - y2_star) ** 2, "equality"))
+    problem.add_constraint(Constraint(((e2_star - e1_star) / (3 * R) - y1_star) ** 2, "equality"))
+    problem.add_constraint(Constraint(((e2_star - e3_star) / (3 * R) - y3_star) ** 2, "equality"))
+
+    x1_1 = problem.set_initial_point()
+    y1_1, _ = f1.oracle(x1_1) 
+    x2_1 = problem.set_initial_point()
+    y2_1, _ = f2.oracle(x2_1)
+    x3_1 = problem.set_initial_point()
+    y3_1, _ = f3.oracle(x3_1)
+    e1_1 = x1_1 - R * y1_1
+    e2_1 = x2_1 - R * y2_1
+    e3_1 = x3_1 - R * y3_1
+
+    x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (1/(3*R)) * ((x1_1 - R * y1_1) - (x2_1 - R * y2_1)))
+    y1_2, f1_2 = f1.oracle(x1_2)
+    x2_2 = x2_1 - (h / Capacitance) * (y2_1 + (1/(3*R)) * (2 * (x2_1 - R * y2_1) - (x1_1 - R * y1_1) - (x3_1 - R * y3_1)))
+    y2_2, f2_2 = f2.oracle(x2_2)
+    x3_2 = x3_1 - (h / Capacitance) * (y3_1 + (1/(3*R)) * ((x3_1 - R * y3_1) - (x2_1 - R * y2_1)))
+    y3_2, f3_2 = f3.oracle(x3_2)
+    e1_2 = x1_2 - R * y1_2
+    e2_2 = x2_2 - R * y2_2
+    e3_2 = x3_2 - R * y3_2
+
+    E_1 = (Capacitance/2) * ((e1_1 - e1_star)**2 + (e2_1 - e2_star)**2 + (e3_1 - e3_star)**2)
+    E_2 = (Capacitance/2) * ((e1_2 - e1_star)**2 + (e2_2 - e2_star)**2 + (e3_2 - e3_star)**2) 
+
+    Delta_1 = rho * (1 / (3 * R)) * ((e1_1 - e2_1 - (e1_star - e2_star))**2 + (e3_1 - e2_1 - (e3_star - e2_star))**2) + \
+              eta * (1/L_smooth - R) * ((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
 
 def pg_extra_l3(mu, L_smooth_h, L_smooth_f, R, W, params=None):
     # agent communication graph 1 -- 2 -- 3
@@ -378,125 +497,5 @@ def decentralized_admm_graph6(mu, L_smooth, R, Inductance, params=None):
                     + f5_2 - f5_star - y5_star * (x5_2 - x_star) \
                     + f6_2 - f6_star - y6_star * (x6_2 - x_star))
 
-    problem.set_performance_metric(E_2 - (E_1 - Delta_2))
-    return problem
-
-
-def diffusion_line3(mu, L_smooth, R, Capacitance, params=None):
-    """
-    Mixing matrix for a line graph 
-    W = [[1/3, 2/3, 0], 
-         [1/3, 1/3, 1/3],
-         [0, 1/3, 2/3]]
-    """
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP() 
-        package = pep_func 
-        Constraint = pep_constr
-        proximal_step = pep_proximal_step
-        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        Constraint = co_constr
-        proximal_step = co_func.proximal_step
-        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
-
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    f3 = define_function(problem, mu, L_smooth, package)
-    
-    x1_star = problem.set_initial_point()
-    x2_star = problem.set_initial_point()
-    x3_star = problem.set_initial_point()
-    y1_star, f1_star = f1.oracle(x1_star)
-    y2_star, f2_star = f2.oracle(x2_star)
-    y3_star, f3_star = f3.oracle(x3_star)
-    e1_star = x1_star - R * y1_star
-    e2_star = x2_star - R * y2_star
-    e3_star = x3_star - R * y3_star
-    problem.add_constraint(Constraint( ((e1_star - 2 * e2_star + e3_star) / (3 * R) - y2_star) ** 2, "equality"))
-    problem.add_constraint(Constraint(((e2_star - e1_star) / (3 * R) - y1_star) ** 2, "equality"))
-    problem.add_constraint(Constraint(((e2_star - e3_star) / (3 * R) - y3_star) ** 2, "equality"))
-
-    x1_1 = problem.set_initial_point()
-    y1_1, _ = f1.oracle(x1_1) 
-    x2_1 = problem.set_initial_point()
-    y2_1, _ = f2.oracle(x2_1)
-    x3_1 = problem.set_initial_point()
-    y3_1, _ = f3.oracle(x3_1)
-    e1_1 = x1_1 - R * y1_1
-    e2_1 = x2_1 - R * y2_1
-    e3_1 = x3_1 - R * y3_1
-
-    x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (1/(3*R)) * ((x1_1 - R * y1_1) - (x2_1 - R * y2_1)))
-    y1_2, f1_2 = f1.oracle(x1_2)
-    x2_2 = x2_1 - (h / Capacitance) * (y2_1 + (1/(3*R)) * (2 * (x2_1 - R * y2_1) - (x1_1 - R * y1_1) - (x3_1 - R * y3_1)))
-    y2_2, f2_2 = f2.oracle(x2_2)
-    x3_2 = x3_1 - (h / Capacitance) * (y3_1 + (1/(3*R)) * ((x3_1 - R * y3_1) - (x2_1 - R * y2_1)))
-    y3_2, f3_2 = f3.oracle(x3_2)
-    e1_2 = x1_2 - R * y1_2
-    e2_2 = x2_2 - R * y2_2
-    e3_2 = x3_2 - R * y3_2
-
-    E_1 = (Capacitance/2) * ((e1_1 - e1_star)**2 + (e2_1 - e2_star)**2 + (e3_1 - e3_star)**2)
-    E_2 = (Capacitance/2) * ((e1_2 - e1_star)**2 + (e2_2 - e2_star)**2 + (e3_2 - e3_star)**2) 
-
-    Delta_1 = rho * (1 / (3 * R)) * ((e1_1 - e2_1 - (e1_star - e2_star))**2 + (e3_1 - e2_1 - (e3_star - e2_star))**2) + \
-              eta * (1/L_smooth - R) * ((y1_1 - y1_star)**2 + (y2_1 - y2_star)**2 + (y3_1 - y3_star)**2)
-    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
-    return problem
-
-
-def decentralized_gradient_descent_line3(mu, L_smooth, R, Capacitance, params=None):
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP() 
-        package = pep_func 
-        Constraint = pep_constr
-        proximal_step = pep_proximal_step
-        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        Constraint = co_constr
-        proximal_step = co_func.proximal_step
-        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
-
-    f1 = define_function(problem, mu, L_smooth, package)
-    f2 = define_function(problem, mu, L_smooth, package)
-    f3 = define_function(problem, mu, L_smooth, package)
-    
-    # stepsize = h / Capacitance
-    x2_star = problem.set_initial_point()
-    y2_star, f2_star = f2.oracle(x2_star)
-    x1_star, y1_star, f1_star = proximal_step(x2_star, f1, R)
-    x3_star, y3_star, f3_star = proximal_step(x2_star, f3, R)
-    x2_star_v2, y2_star_v2, f2_star_v2 = proximal_step((x1_star + x3_star)/2, f2, R/2)
-    problem.add_constraint(Constraint( (x2_star - x2_star_v2) ** 2, "equality"))
-
-    x1_1 = problem.set_initial_point()
-    y1_1, _ = f1.oracle(x1_1) 
-    x2_1 = problem.set_initial_point()
-    y2_1, _ = f2.oracle(x2_1)
-    x3_1 = problem.set_initial_point()
-    y3_1, _ = f3.oracle(x3_1)
-
-    x1_2 = x1_1 - (h / Capacitance) * (y1_1 + (x1_1 - x2_1) / R ) 
-    y1_2, f1_2 = f1.oracle(x1_2)
-    x2_2 = x2_1 - ( h / Capacitance) * (y2_1 + (x2_1 - x1_1 + x2_1 - x3_1) / R ) 
-    y2_2, f2_2 = f2.oracle(x2_2)
-    x3_2 = x3_1 - ( h / Capacitance) * (y3_1 + (x3_1 - x2_1) / R )
-    y3_2, f3_2 = f3.oracle(x3_2)
-
-    E_1 = (Capacitance/2) * ((x1_1 - x1_star)**2 + (x2_1 - x2_star)**2 + (x3_1 - x3_star)**2)
-    E_2 = (Capacitance/2) * ((x1_2 - x1_star)**2 + (x2_2 - x2_star)**2 + (x3_2 - x3_star)**2) 
-
-    Delta_2 = rho * (1 / R) * ((x1_2 - x2_2 - (x1_star - x2_star))**2 + (x3_2 - x2_2 - (x3_star - x2_star))**2) + \
-              eta * ((x1_2 - x1_star) * (y1_2 - y1_star) + (x2_2 - x2_star) * (y2_2 - y2_star) 
-                                                        + (x3_2 - x3_star) * (y3_2 - y3_star))
     problem.set_performance_metric(E_2 - (E_1 - Delta_2))
     return problem

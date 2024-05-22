@@ -43,42 +43,6 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
     return problem
 
 
-def ppm_circuit(mu, L_smooth, Capacitance, R, params=None): 
-    if params is not None:
-        # verification mode: PEP
-        problem = PEPit.PEP()
-        package = pep_func
-        proximal_step = pep_proximal_step
-        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
-    else:
-        # Ciropt mode
-        problem = CircuitOpt()
-        package = co_func
-        proximal_step = co_func.proximal_step
-        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
-    func = define_function(problem, mu, L_smooth, package )
-    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
-
-    x_1 = problem.set_initial_point()
-    x1_prox, _, _ = proximal_step(x_1, func, R)
-    # x_2 = x_1 - (h / Capacitance) * (x_1 - x1_prox) / R
-    # y_2, f_2 = func.oracle(x_2)
-
-    x_1p5 = x_1 - (alpha * h / Capacitance) * (x_1 - x1_prox) / R 
-    x1p5_prox, _, _ = proximal_step(x_1p5, func, R)
-
-    i_R_1 = (x_1 - x1_prox) / R
-    x_2 = x_1  - (beta * h / Capacitance) * (x_1 - x1_prox) / R  \
-               - ((1 - beta) * h / Capacitance) * (x_1p5 - x1p5_prox) / R
-    y_2, f_2 = func.oracle(x_2)
-
-    E_1 = (Capacitance/2) * (x_1 - x_star)**2
-    E_2 = (Capacitance/2) * (x_2 - x_star)**2
-    Delta_1 = eta * (f_2 - f_star) + rho * R * (i_R_1 - y_star)**2
-    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
-    return problem
-
-
 def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, params=None): 
     if params is not None:
         # verification mode: PEP
@@ -113,6 +77,40 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2 + (Inductance/2) * (i_L_1 - y_star) ** 2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2 + (Inductance/2) * (i_L_2 - y_star) ** 2
     Delta_1 = rho * R * (y_1 - i_L_1)**2 + eta * (f_1 - f_star)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+def ppm_circuit(mu, L_smooth, Capacitance, R, params=None): 
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        proximal_step = pep_proximal_step
+        h, alpha, beta, eta, rho = params["h"], params["alpha"], params["beta"], params["eta"], params["rho"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        proximal_step = co_func.proximal_step
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
+    func = define_function(problem, mu, L_smooth, package )
+    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
+
+    x_1 = problem.set_initial_point()
+    x1_prox, _, _ = proximal_step(x_1, func, R)
+
+    x_1p5 = x_1 - (alpha * h / Capacitance) * (x_1 - x1_prox) / R 
+    x1p5_prox, _, _ = proximal_step(x_1p5, func, R)
+
+    i_R_1 = (x_1 - x1_prox) / R
+    x_2 = x_1  - (beta * h / Capacitance) * (x_1 - x1_prox) / R  \
+               - ((1 - beta) * h / Capacitance) * (x_1p5 - x1p5_prox) / R
+    y_2, f_2 = func.oracle(x_2)
+
+    E_1 = (Capacitance/2) * (x_1 - x_star)**2
+    E_2 = (Capacitance/2) * (x_2 - x_star)**2
+    Delta_1 = eta * (f_2 - f_star) + rho * R * (i_R_1 - y_star)**2
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
 

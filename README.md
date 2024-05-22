@@ -41,7 +41,7 @@ $$
 
 2. Create the static interconnect (SI) respresenting the optimality conditions.
 
-3. Replace wires of SI with RLC components to derive the ***admissible*** dynamic interconnect (DI) that relaxes in equillibrium to SI.
+3. Replace wires of SI with RLC components to derive the ***admissible*** dynamic interconnect (DI) that relaxes to SI in equilibrium.
 
 4. Using `ciropt` find discretization parameters for DI that produce convergent algorithm.
 
