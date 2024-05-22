@@ -18,13 +18,13 @@ To install `ciropt` 1) activate virtual environment, 2) clone the repo, 3) from 
 pip install -e .
 ```
 Requirements
-* python >= 3.10
-* pepit >= 0.2.1
+* python == 3.10
+* pepit == 0.2.1
 * numpy >= 1.26
 * scipy >= 1.11.3
-* casadi >= 3.6.4
-* sympy >= 1.12
-* cvxpy >= 1.4.1
+* casadi == 3.6.4
+* sympy == 1.12
+* cvxpy == 1.4.1
 * matplotlib >= 3.5.3
 
 # Process of optimization algorithm design
