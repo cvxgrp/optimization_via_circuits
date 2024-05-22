@@ -84,4 +84,78 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
     return err_opt_star, err_opt_reldiff, const_vio, f_reldiff
 
 
+def pg_extra(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star, 
+          prox_operators, grad_h, f_plus_h, params=None, printing=False, sc_index_set = None, freq=50) :
+    n_node = problem_spec['n_node']
+    vector_size = problem_spec['vector_size']
+    rho = problem_data['rho']
 
+    itr_num = problem_data['itr_num']
+    W = network_data['W']
+    
+    if alg_type == "pg_extra": 
+        step_size_L = 1/2
+    elif alg_type == "pg_extra_par_c":
+        R, h, Capacitance = params["R"], params["h"], params["Capacitance"]
+        rho = R
+        step_size_L = h
+        step_size_C_inv = Capacitance / h 
+        R_matrix = 1/R * W
+        G = network_data["G"]
+        adjacency = [[] for _ in range(G.number_of_nodes())]
+        for node, adjacencies in G.adjacency():
+            adjacency[node-1] = [e-1 for e in list(adjacencies.keys())]
+
+    err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
+
+    x_0 = np.zeros((n_node,vector_size))
+    x_k = np.array(x_0)
+
+    if alg_type=="pg_extra":
+        w_0 = np.zeros((n_node,vector_size))
+        w_k = np.array(w_0)
+    elif alg_type=="pg_extra_par_c":
+        i_L_0 = np.zeros((n_node,n_node,vector_size))
+        i_L_k = np.array(i_L_0)
+        i_C_0 = np.zeros((n_node,n_node,vector_size))
+        i_C_k = np.array(i_C_0)
+
+    for ii in range(itr_num) :
+        x_k_prev = np.array(x_k)
+        f_val = 0
+        if alg_type=="pg_extra":
+            w_k_prev = np.array(w_k)
+            w_k = w_k_prev + step_size_L * (np.eye(n_node) - W) @ x_k_prev    
+        elif alg_type=="pg_extra_par_c":
+            i_C_k_prev = np.array(i_C_k)
+            i_L_k_prev = np.array(i_L_k)
+            for jj in range(n_node):
+                for ll in adjacency[jj]:
+                    i_L_k[jj][ll] = i_L_k_prev[jj][ll] + step_size_L * R_matrix[jj][ll] * ( x_k_prev[jj] - x_k_prev[ll] )
+
+        for jj in range(n_node) :
+            if alg_type=="pg_extra":
+                e_k_jj = (W[jj]@x_k_prev - w_k_prev[jj]) - rho * grad_h[jj](x_k_prev[jj])  
+            elif alg_type=="pg_extra_par_c":                
+                sum_iC_iL = np.array(np.zeros(vector_size))
+                for ll in adjacency[jj]:
+                    sum_iC_iL += i_L_k_prev[jj][ll] + i_C_k_prev[jj][ll] 
+                e_k_jj = W[jj]@x_k_prev - R * sum_iC_iL - R * grad_h[jj](x_k_prev[jj])
+            x_k[jj] = prox_operators[jj](e_k_jj, rho)
+            f_val += f_plus_h[jj](x_k[jj])
+
+        if alg_type=="pg_extra_par_c":
+            for jj in range(n_node) :
+                for ll in adjacency[jj]:
+                    # i_C_k[jj][ll] = i_C_k_prev[jj][ll] + step_size_C_inv * ( ( x_k[jj] - x_k[ll] ) - ( x_k_prev[jj] - x_k_prev[ll] ) )
+                    # i_C_k[jj][ll] = i_C_k_prev[jj][ll] + step_size_C_inv / R_matrix[jj][ll] * ( ( x_k[jj] - x_k[ll] ) - ( x_k_prev[jj] - x_k_prev[ll] ) )
+                    i_C_k[jj][ll] = i_C_k_prev[jj][ll] + step_size_C_inv * R_matrix[jj][ll] * ( ( x_k[jj] - x_k[ll] ) - ( x_k_prev[jj] - x_k_prev[ll] ) )
+             
+        op_norm.append( np.sum((x_k-x_k_prev)**2)  )
+        err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))
+        err_opt_reldiff.append(np.sqrt(np.sum((x_k - x_opt_star)**2)) / np.sqrt(np.sum((x_0 - x_opt_star)**2)))
+        f_reldiff.append(np.abs((f_val - f_star)/f_star))
+        if printing and (ii % freq == 0 or ii == itr_num-1):
+            print(f"{ii=}, {f_reldiff[-1]=}, {err_opt_reldiff[-1]=}")
+
+    return op_norm, err_opt_star, err_opt_reldiff, const_vio, f_reldiff
