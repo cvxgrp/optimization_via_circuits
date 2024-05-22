@@ -12,6 +12,8 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
 
+    # print('hello')
+
     # x_0_data = problem_data['x_0_data']
     itr_num = problem_data['itr_num']
     W = network_data['W']
@@ -54,21 +56,26 @@ def dadmm(alg_type, problem_spec, problem_data, network_data, x_opt_star, f_star
 
         for j in range(n_node):
             for l_idx, l in enumerate(adjacency[j]):
-                if (alg_type == "cir_dadmm_c") or (alg_type == "cir_dadmm_c2"):
-                    if ((j == 3 and l==4) or (j==4 and l==3)):
+                if (j == 3 and l==4) or (j==4 and l==3):
+                    if (alg_type == "cir_dadmm_c") or (alg_type == "cir_dadmm_c2"): 
                         j_idx = adjacency[l].index(j)
                         e_k[j][l_idx] = e_k_prev[j][l_idx] - (h / Capacitance) * (i_L_k_prev[j][l_idx] + i_L_k_prev[l][j_idx] + (2 * e_k_prev[j][l_idx] - x_k[j] - x_k[l])/R)
+                    else:
+                        e_k[j][l_idx] = (1/2) * (x_k[j] + x_k[l])
                 else:
                     e_k[j][l_idx] = (1/2) * (x_k[j] + x_k[l])
         for j in range(n_node):
             if alg_type == "cir_dadmm_c2":
                 for l_idx, l in enumerate(adjacency[j]):
-                    if ((j == 3 and l==4) or (j==4 and l==3)):
-                        j_idx = adjacency[l].index(j)
-                        i_L_k[j][l_idx] = i_L_k[j][l_idx] + step_size_S * (e_k[j][l_idx] - x_k[j])
+                    j_idx = adjacency[l].index(j)
+                    if (j == 3 and l==4) or (j==4 and l==3):
+                        i_L_k[j][l_idx] = i_L_k_prev[j][l_idx] + step_size_S * (e_k[j][l_idx] - x_k[j])
                     else:
-                        i_L_k[j][l_idx] = i_L_k[j][l_idx] + step_size * (e_k[j][l_idx] - x_k[j])
+                        i_L_k[j][l_idx] = i_L_k_prev[j][l_idx] + step_size * (e_k[j][l_idx] - x_k[j])
             else:
+                # print('i_L_k', i_L_k[0].shape)
+                # print('e_k', e_k[0].shape)
+                # print('x_k', x_k.shape)
                 i_L_k[j] = i_L_k_prev[j] + step_size * ( e_k[j] - x_k[j])
         
         err_opt_star.append(np.sqrt(np.sum((x_k - x_opt_star)**2)))

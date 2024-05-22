@@ -11,10 +11,11 @@ from scipy.stats import ortho_group
 
 
 
-def prox_fj_geom_mean(z, rho, b):
+def prox_fj_geom_mean(z, rho, b, rescale):
     """
     return minimizer to \|x - b\|_2 + (1/(2 * rho)) * \|x - z\|_2^2
     """
+    rho = rescale * rho
     e = b - z
     x = b - (e / np.linalg.norm(e)) * np.maximum(np.linalg.norm(e) - rho, 0.)
     return x
@@ -29,12 +30,12 @@ def prox_fj_geom_mean_sc(z, rho, b, c, Qj, theta=1e-4):
     x_star = np.linalg.solve(A, b)
     return x_star
 
-def cvx_prox_fj_geom_mean(z, rho, b, vector_size):
+def cvx_prox_fj_geom_mean(z, rho, b, rescale, vector_size):
     """
-    return minimizer to \|x - b\|_2 + (1/(2 * rho)) * \|x - z\|_2^2
+    return minimizer to rescale * \|x - b\|_2 + (1/(2 * rho)) * \|x - z\|_2^2
     """
     x = cp.Variable(vector_size)
-    f = cp.norm(x - b, 2) + (1/(2*rho)) * cp.sum_squares(x - z)
+    f = rescale * cp.norm(x - b, 2) + (1/(2*rho)) * cp.sum_squares(x - z)
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -59,6 +60,7 @@ def cvx_geom_median(problem_spec, problem_data):
     n_node = problem_spec['n_node']
     vector_size = problem_spec['vector_size']
     theta = problem_spec['sc_theta']
+    rescale = problem_spec['rescale']
     b = problem_data['b']
     c = problem_data['c']
     Q = problem_data['Q']
@@ -72,7 +74,7 @@ def cvx_geom_median(problem_spec, problem_data):
         if jj in [3, 4]:
             f += theta * cp.sum_squares( Q[jj] @ x -c_temp) 
         else:
-            f += cp.norm(x - b_temp, 2)  
+            f += rescale * cp.norm(x - b_temp, 2)  
 
     prob = cp.Problem(cp.Minimize(f), [])
     prob.solve()
@@ -91,11 +93,13 @@ def data_generation(problem_spec) :
     # vectors which geom. median we want to find
     # b = np.random.randn(n_node * vector_size)
     b = np.random.rand(n_node * vector_size) * 200 - 100
+    # b = np.random.rand(n_node * vector_size) * 10000 - 100
     
     if translation=="b":
         c = b
     elif translation=="rand":
-        c = np.random.rand(n_node * vector_size) * 100000 - 100
+        # c = np.random.rand(n_node * vector_size) * 100000 - 100
+        c = np.random.rand(n_node * vector_size) * 200 - 100
     else:
         c = np.zeros(n_node * vector_size)
 
@@ -105,7 +109,8 @@ def data_generation(problem_spec) :
     for j in sc_index_set:
         # D = np.diag(np.arange(1, vector_size + 1))
         # D = np.diag(np.arange(1, vector_size + 1))
-        D = np.diag(np.linspace(1, 300, vector_size))
+        # D = np.diag(np.linspace(1, 300, vector_size))
+        D = np.diag(np.linspace(1, 1000, vector_size))
         U = ortho_group.rvs(dim=vector_size)
         sq_Q = np.dot(D,U)
         Q[j] = np.dot( sq_Q.T, sq_Q )
@@ -147,6 +152,7 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     vector_size = problem_spec['vector_size']
     rho = problem_data['rho']
     theta = problem_spec['sc_theta']
+    rescale = problem_spec['rescale']
 
     b = problem_data['b']
     c = problem_data['c']
@@ -156,7 +162,8 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
     
     err_opt_star, err_opt_reldiff, op_norm, const_vio, f_reldiff = [], [], [], [], []
 
-    x_0 = np.reshape(b, (n_node, vector_size))
+    # x_0 = np.reshape(b, (n_node, vector_size))
+    x_0 = np.zeros((n_node, vector_size))
     x_k = np.array(x_0)
     w_0 = np.zeros((n_node,vector_size))
     w_k = np.array(w_0)
@@ -177,8 +184,8 @@ def p_extra_dgeom_median(method_ver, problem_spec, problem_data, network_data, x
                 f_val += theta * np.linalg.norm( Q_temp @ x_k[jj] - c_temp, ord=2)**2
             else:
                 e_k[jj] = b_temp - z_temp
-                x_k[jj] = prox_fj_geom_mean(z_temp, rho, b_temp)
-                f_val += np.linalg.norm((x_k[jj] - b_temp), ord=2)
+                x_k[jj] = prox_fj_geom_mean(z_temp, rho, b_temp, rescale)
+                f_val += rescale * np.linalg.norm((x_k[jj] - b_temp), ord=2)
 
         w_k = w_k_prev + 1/2*(np.eye(n_node) - W) @ x_k_prev
         
