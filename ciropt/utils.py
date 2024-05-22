@@ -216,11 +216,11 @@ def matrix_to_diff_psd(A):
     return A_plus, A_minus
 
 
-def grid_search(optimization_func, param_values):
+def grid_search(optimization_func, param_values, start=50, end=350):
     best_value = np.inf
     for param in param_values:
         reldiff = optimization_func(param)
-        new_val = sum(reldiff[50:350])/300
+        new_val = sum(reldiff[start:end]) / (end-start)
         if new_val < best_value:
             print(f"new {param=}, new {new_val=}")
             best_value = new_val

@@ -84,12 +84,13 @@ def data_generation(problem_spec) :
     # b = np.random.randn(n_nodes * vector_size)
     b = np.random.rand(n_nodes * vector_size) * 200 - 100
     
-    eigs = 1 + 10**np.linspace(0, 3, vector_size, endpoint=True)
     Ps = []
     for _ in range(n_nodes):
         Q = np.linalg.qr(np.random.randn(vector_size, vector_size))[0]
+        eigs = 1 + 10**(np.random.rand(vector_size) * 3)
         P = (Q * eigs) @ Q.T
-        assert np.allclose(eigs, np.sort(np.linalg.eigvalsh(P)))
+        assert np.allclose(np.sort(eigs), np.sort(np.linalg.eigvalsh(P))), \
+                print(np.linalg.norm(np.sort(eigs) - np.sort(np.linalg.eigvalsh(P))))
         Ps += [P]
 
     problem_data = {'b' : b, 'P' : Ps}
