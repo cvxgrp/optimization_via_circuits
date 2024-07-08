@@ -133,6 +133,13 @@ def symm_prod_one_hot(n, i, j):
     return symm_prod(a, b)
 
 
+def inv_discr_params(discretization_params):
+    res = []
+    for name in discretization_params:
+        if "inv" in name:
+            res += [name[3:]]
+    return res
+
 def prod_one_hot(shape, i, j):
     a = np.zeros(shape)
     a[i, j] = 1
@@ -146,11 +153,11 @@ def symm_prod(a, b=None):
     return 0.5 * (a @ b.T + b @ a.T)
 
 
-def dict_parameters_ciropt(sol, ca_vars, all=False):
+def dict_parameters_ciropt(sol, ca_vars, all=False, keys_list=None):
     res = {} 
     if all:
         keys_list = ca_vars.keys()
-    else:
+    elif keys_list is None:
         keys_list = ['eta', 'h', 'rho', 'alpha', 'beta', 'gamma', 'delta']
     for key in keys_list:
         try: res[key] = sol.value(ca_vars[key])

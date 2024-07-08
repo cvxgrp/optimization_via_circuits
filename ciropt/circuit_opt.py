@@ -179,6 +179,19 @@ class CircuitOpt(object):
                     'alpha': opti.variable(),
                     'beta': opti.variable(), 
                     'P': opti.variable(dim_G, dim_G) }
+        
+        inv_params = inv_discr_params(self.discretization_params)
+        # add constraints for reciprocal relations
+        for name in inv_params:
+            v = ca_vars[name] = opti.variable()
+            inv_v = ca_vars["inv" + name] = opti.variable()
+            opti.subject_to( v * inv_v == 1)
+            opti.subject_to(v >= 1e-7)
+
+        for name in self.discretization_params:
+            if name not in ca_vars:
+                ca_vars[name] = opti.variable()
+
         P = ca.tril(ca_vars["P"])
         opti.subject_to( ca.diag(P) >= np.zeros((dim_G, 1)) )
         ca_add_bounds(opti, bounds, ca_vars, set())
@@ -246,7 +259,7 @@ class CircuitOpt(object):
                                 'P': P}
         self.opti = opti
         self.vars = ca_vars
-        return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
+        return dict_parameters_ciropt(sol, ca_vars, keys_list=self.discretization_params), sol, sp_exp
     
   
     def solve_ipopt_qcqp(self, verbose=False, init_values=None, x0=None, bounds=None, extra_dim=150, debug=False, **kwargs):
@@ -263,6 +276,7 @@ class CircuitOpt(object):
                                   if function.get_is_leaf()]
 
         discretization_params = self.discretization_params
+        inv_params = inv_discr_params(self.discretization_params)
         sp_exp, total_I_size, total_eq_size = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
         v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
@@ -329,6 +343,14 @@ class CircuitOpt(object):
             Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
             opti.subject_to( vec_v.T @ Qi @ vec_v + ai.T @ vec_v == 0)
 
+        # add constraints for reciprocal relations
+        for v in inv_params:
+            inv_v = "inv" + v
+            # include both permutations for the product 
+            Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[inv_v])
+            opti.subject_to( vec_v.T @ Qi @ vec_v == 1)
+            opti.subject_to(var_x[name2idx[v]] >= 1e-7)
+
         # lambda >= 0 constraints
         vec_lambs = get_vec_var(var_x, "lamb", vec_indices)
         opti.subject_to( vec_lambs >= np.zeros(vec_lambs.shape))
@@ -359,7 +381,7 @@ class CircuitOpt(object):
         self.name2idx = name2idx
         self.v_names = v_names
         self.vars = {"x": sol.value(var_x), "v_names":v_names}
-        return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
+        return dict_parameters_ciropt(sol, ca_vars, keys_list=self.discretization_params), sol, sp_exp
     
 
     def solve_ipopt_qcqp_matrix(self, verbose=False, init_values=None, bounds=None, debug=False, **kwargs):
@@ -374,6 +396,7 @@ class CircuitOpt(object):
                                     if function.get_is_leaf()]
 
         discretization_params = self.discretization_params
+        inv_params = inv_discr_params(self.discretization_params)
         sp_exp, total_I_size, total_eq_size  = self.circuit_symbolic_matrices(list_of_leaf_functions, dim_G, dim_F)[:3]
 
         v_coeffs, v_names, name2idx, v_k_list = sp_v_coeff_matrix(sp_exp, discretization_params)
@@ -435,6 +458,14 @@ class CircuitOpt(object):
             Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[pref_v])
             opti.subject_to( ca.trace(((I_v.T @ Qi) @ I_v) @ var_X)+ ai.T @ I_v @ var_x == 0)
 
+        # add constraints for reciprocal relations
+        for v in inv_params:
+            inv_v = "inv" + v
+            # include both permutations for the product 
+            Qi = symm_prod_one_hot(v_size, name2idx[v], name2idx[inv_v])
+            opti.subject_to( ca.trace(((I_v.T @ Qi) @ I_v) @ var_X) == 1)
+            opti.subject_to(var_x[name2idx[v]] >= 1e-7)
+
         # bounds
         ca_add_bounds(opti, bounds, ca_vars, name2idx)
 
@@ -467,7 +498,7 @@ class CircuitOpt(object):
         self.name2idx = name2idx
         self.v_names = v_names
         self.vars = {"x": sol.value(var_x), "v_names":v_names}
-        return dict_parameters_ciropt(sol, ca_vars), sol, sp_exp
+        return dict_parameters_ciropt(sol, ca_vars, keys_list=self.discretization_params), sol, sp_exp
 
 
     solve_sdp_relax = solve_sdp_relax
