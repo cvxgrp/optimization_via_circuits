@@ -1,4 +1,5 @@
 import numpy as np
+import sympy as sp
 
 import PEPit
 import PEPit.functions as pep_func
@@ -43,6 +44,39 @@ def gradient_flow_circuit(mu, L_smooth, Capacitance, params=None):
     return problem
 
 
+def gradient_flow_circuit_tuneC(mu, L_smooth, params=None): 
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        h, alpha, beta, eta, C, invC = params["h"], params["alpha"], params["beta"], params["eta"], params["C"], params["invC"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        C = sp.symbols('C')
+        invC = sp.symbols("invC")
+        problem.discretization_params = sorted(problem.discretization_params + ["C", "invC"])
+        h, alpha, beta, eta = problem.h, problem.alpha, problem.beta, problem.eta
+    func = define_function(problem, mu, L_smooth, package )
+    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
+
+    x_1 = problem.set_initial_point()
+    y_1, f_1 = func.oracle(x_1)
+
+    x_1p5 = x_1 - (alpha * h * invC) * y_1 
+    y_1p5, f_1p5 = func.oracle(x_1p5)
+
+    x_2 = x_1  - (beta * h * invC) * y_1 - ((1 - beta) * h * invC) * y_1p5
+    y_2, f_2 = func.oracle(x_2)
+
+    E_1 = (C/2) * (x_1 - x_star)**2
+    E_2 = (C/2) * (x_2 - x_star)**2
+    Delta_1 = eta * (f_1 - f_star)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
 def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, params=None): 
     if params is not None:
         # verification mode: PEP
@@ -76,6 +110,49 @@ def accelerated_gradient_circuit(mu, L_smooth, R, Capacitance, Inductance, param
 
     E_1 = (Capacitance/2) * (v_C_1 - x_star)**2 + (Inductance/2) * (i_L_1 - y_star) ** 2
     E_2 = (Capacitance/2) * (v_C_2 - x_star)**2 + (Inductance/2) * (i_L_2 - y_star) ** 2
+    Delta_1 = rho * R * (y_1 - i_L_1)**2 + eta * (f_1 - f_star)
+    problem.set_performance_metric(E_2 - (E_1 - Delta_1))
+    return problem
+
+
+def accelerated_gradient_circuit_tuneRLC(mu, L_smooth, params=None): 
+    if params is not None:
+        # verification mode: PEP
+        problem = PEPit.PEP()
+        package = pep_func
+        h, alpha, beta, eta, rho, C, invC, L, invL, R = params["h"], params["alpha"], params["beta"], params["eta"], \
+                                    params["rho"], params["C"], params["invC"], params["L"], params["invL"], params["R"]
+    else:
+        # Ciropt mode
+        problem = CircuitOpt()
+        package = co_func
+        C, R, L = sp.symbols('C'), sp.symbols('R'), sp.symbols('L')
+        invC, invL = sp.symbols("invC"), sp.symbols("invL")
+        problem.discretization_params = sorted(problem.discretization_params + 
+                                               ["C", "invC", "L", "invL", "R"])
+        h, alpha, beta, eta, rho = problem.h, problem.alpha, problem.beta, problem.eta, problem.rho
+
+    func = define_function(problem, mu, L_smooth, package)
+    x_star, y_star, f_star = func.stationary_point(return_gradient_and_function_value=True)
+
+    v_C_1 = problem.set_initial_point()
+    i_L_1 = problem.set_initial_point()
+    x_1 = R * i_L_1 + v_C_1
+    y_1, f_1 = func.oracle(x_1)
+
+    i_L_1p5 = i_L_1 + (alpha * h * invL) * (v_C_1 - (x_1 - R * y_1)) 
+    v_C_1p5 = v_C_1 - (alpha * h * invC) * y_1 
+    x_1p5 = R * i_L_1p5 + v_C_1p5
+    y_1p5, f_1p5 = func.oracle(x_1p5)
+
+    i_L_2 = i_L_1 + (beta * h * invL) * (v_C_1 - (x_1 - R * y_1)) + \
+                    ((1 - beta) * h * invL) * (v_C_1p5 - (x_1p5 - R * y_1p5))
+    v_C_2 = v_C_1 - (beta * h * invC) * y_1 - ((1 - beta) * h * invC) * y_1p5  
+    x_2 = R * i_L_2 + v_C_2
+    y_2, f_2 = func.oracle(x_2)
+
+    E_1 = (C/2) * (v_C_1 - x_star)**2 + (L/2) * (i_L_1 - y_star) ** 2
+    E_2 = (C/2) * (v_C_2 - x_star)**2 + (L/2) * (i_L_2 - y_star) ** 2
     Delta_1 = rho * R * (y_1 - i_L_1)**2 + eta * (f_1 - f_star)
     problem.set_performance_metric(E_2 - (E_1 - Delta_1))
     return problem
