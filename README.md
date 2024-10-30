@@ -192,7 +192,7 @@ Since we are using Ipopt which does not solve the nonconvex optimization problem
 3. Consider the full dissipative term
 
 $$
-\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i_\mathcal{R}^1\|_{D_\mathcal{R}}^2.
+\mathcal{E}_2- \mathcal{E}_1 +  \eta\langle x^1-x^\star, y^1-y^\star\rangle + \rho\|i^1 _{\mathcal{R}}\|^2 _{D _\mathcal{R}}.
 $$
 
 4. Vary the mixing weight $w$ in the objective $\eta + w\rho$, by setting `problem.obj = eta + w*rho`, which increases the descent in energy.
